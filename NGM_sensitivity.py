@@ -71,7 +71,7 @@ for idx, (param_name, data) in enumerate(results.items()):
         ax.legend(fontsize=8)
 
 plt.tight_layout()
-plt.savefig('./Figures/R0_sensitivity_analysis.png', dpi=300)
+plt.savefig('./Figures/R0_sensitivity_analysis.png', dpi=600)
 print("Saved: ./Figures/R0_sensitivity_analysis.png")
 plt.show()
 
@@ -115,6 +115,6 @@ plt.title('Parameter Sensitivity of R₀\n(Positive = increasing parameter incre
 plt.axvline(0, color='black', linewidth=0.8)
 plt.grid(True, alpha=0.3, axis='x')
 plt.tight_layout()
-plt.savefig('./Figures/R0_sensitivity_barplot.png', dpi=300)
+plt.savefig('./Figures/R0_sensitivity_barplot.png', dpi=600)
 print("Saved: ./Figures/R0_sensitivity_barplot.png")
 plt.show()
