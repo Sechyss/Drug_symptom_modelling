@@ -295,7 +295,7 @@ GPL-3.0
 
 Author: Alberto TR  
 Email: [a.torcello-requena@exeter.ac.uk]  
-GitHub: [github.com/Sechyss]  
+GitHub: [github.com/Sechyss](https://github.com/Sechyss)  
 Date: November 2025
 
 ---
