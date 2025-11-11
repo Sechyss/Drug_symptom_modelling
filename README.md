@@ -281,21 +281,21 @@ Common files:
 
 If you use this model in research, please cite:
 
-[Author Name]. (2025). SEIRS Virulence-Transmission Trade-off Model: Testing evolutionary effects of symptom-targeting drugs. GitHub repository: https://github.com/[username]/Drug_symptom_modelling
+Torcello-Requena, A. (2025). SEIRS Virulence-Transmission Trade-off Model: Testing evolutionary effects of symptom-targeting drugs. GitHub repository: https://github.com/Sechyss/Drug_symptom_modelling
 
 ---
 
 ## License
 
-[Specify license - e.g., MIT, GPL-3.0, etc.]
+GPL-3.0
 
 ---
 
 ## Contact
 
 Author: Alberto TR  
-Email: [your.email@domain.com]  
-GitHub: [github.com/username]  
+Email: [a.torcello-requena@exeter.ac.uk]  
+GitHub: [github.com/Sechyss]  
 Date: November 2025
 
 ---

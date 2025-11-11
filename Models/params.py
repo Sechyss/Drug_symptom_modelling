@@ -23,6 +23,8 @@ phi_transmission = 1.05 # multiplier for high-virulence transmission (beta_h = p
                         # Results in R0_high = 1.05 * R0_low (5% transmission advantage)
 phi_recover = 1.0       # modifier for high-virulence recovery rate (currently no effect)
                         # Future use: <1 = slower recovery (longer infectious period)
+phi_mortality = 1.0     # modifier for high-virulence mortality rate (currently no effect)
+                        # Future use: >1 = higher disease-induced mortality
 
 # Rates (per day)
 sigma = 1/10           # recovery rate (1 / infectious period = 10 days for untreated)
