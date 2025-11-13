@@ -14,24 +14,20 @@ Rl = 0
 theta = 0.3            # fraction of DETECTED cases that get treated (0..1)
                        # Set low (0.3) as baseline for dose-response experiments
                        # Effective treatment rate = delta_d * theta ≈ 10% per day
-p_recover = 1.5        # treated recovery rate multiplier (>1 means FASTER recovery)
-                       # Treated: recover at p_recover * sigma = 0.15/day (6.7 days)
-                       # Untreated: recover at sigma = 0.1/day (10 days)
+p_recover = 0.5        # treated transmission rate multiplier (<1 means less transmission)
 
 # Virulence modifiers
 phi_transmission = 1.05 # multiplier for high-virulence transmission (beta_h = phi_transmission * beta_l)
-                        # Results in R0_high = 1.05 * R0_low (5% transmission advantage)
+
 phi_recover = 1.0       # modifier for high-virulence recovery rate (currently no effect)
                         # Future use: <1 = slower recovery (longer infectious period)
 phi_mortality = 1.0     # modifier for high-virulence mortality rate (currently no effect)
                         # Future use: >1 = higher disease-induced mortality
 
 # Rates (per day)
-sigma = 1/10           # recovery rate (1 / infectious period = 10 days for untreated)
-delta = 1/90           # immunity waning rate (1 / duration of immunity = 90 days)
+sigma = 1/5           # recovery rate (1 / infectious period = 5 days for untreated)
+delta = 1/120           # immunity waning rate (1 / duration of immunity = 120 days)
 tau = 1/3              # progression from exposed -> infectious (1 / incubation = 3 days)
-delta_d = 1/3          # detection rate (1 / mean delay to detection = 3 days)
-
 # Demography and transmission
 birth_rate = 0.0       # No births (short-term epidemic focus)
 death_rate = 0.0       # No background mortality (disease-induced mortality could be added)
@@ -44,6 +40,19 @@ beta_l = contact_rate * transmission_probability  # baseline transmission rate f
 # Time grid defaults (used if scripts import these)
 t_max = 365            # simulation length in days
 t_steps = 365          # number of time points (daily resolution)
+
+# Detection/uptake parameters
+kappa_base = 1.0        # baseline: no advantage for either strain
+kappa_scale = 1.0       # moderate sensitivity to virulence
+                        # Range: 0.5-3.0
+                        # Examples:
+                        # - kappa_scale=1: phi_trans=1.1 → 10% more detection
+                        # - kappa_scale=2: phi_trans=1.1 → 20% more detection
+
+# Biological interpretation:
+# kappa_high * theta = effective treatment fraction for high-virulence
+# Higher virulence → more severe symptoms → more people seek treatment
+# Even if baseline coverage (theta) is fixed
 
 # Experimental design notes:
 # - theta kept LOW (0.3) to allow dose-response studies (vary 0.3 → 0.9)

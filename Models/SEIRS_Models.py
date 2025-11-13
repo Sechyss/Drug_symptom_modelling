@@ -81,54 +81,51 @@ def SEIRS_model_v2(y, t, params):
     """
     SEIRS model testing virulence-transmission trade-off with symptom-targeting drug.
     
-    Biological assumptions:
-    - Transmission requires symptoms (sneezing, coughing)
-    - Drug reduces symptoms but doesn't eliminate pathogen
-    - High-virulence: produces strong symptoms → treated individuals still transmit at reduced rate (to be tested)
-    - Low-virulence: produces mild symptoms → treatment reduces transmission significantly
-    
-    This tests hypothesis: Can drugs that mask symptoms allow "super-virulent" strains
-    to evolve by removing the constraint that high virulence = immobile/dead hosts?
-    
-    State vector y (length 9): [S, Eh, Indh, Idh, Rh, El, Indl, Idl, Rl]
-    
-    Parameters (11):
-    - beta_l: baseline transmission rate (low-virulence)
-    - birth_rate, death_rate: demographic rates
-    - delta: rate of waning immunity
-    - kappa: detection/treatment rate (proportion diagnosed)
-    - p_recover: treatment efficacy (proportion that recover faster)
-    - phi_recover: recovery rate modifier for high-strain (SET TO 1.0 for no effect currently)
-    - phi_transmission: transmission multiplier for high-strain (e.g., 1.05 = 5% higher R0)
+    Parameters (12):  # Note: increased to 12
+    - contact_rate, transmission_probability
+    - birth_rate, death_rate
+    - delta: immunity waning rate
+    - kappa_base: baseline detection rate for low virulence
+    - kappa_scale: sensitivity of detection to virulence increase
+    - p_recover: transmission reduction for treated
+    - phi_recover: recovery rate modifier for high-strain
+    - phi_transmission: transmission multiplier for high-strain (virulence proxy)
     - sigma: recovery rate
-    - tau: 1/latent period
-    - theta: treatment coverage (proportion of detected cases treated)
+    - tau: incubation rate
+    - theta: treatment coverage
     
-    Future extensions via phi_recover:
-    - < 1.0: high-virulence has longer infectious period (more virulent = sicker longer)
-    - > 1.0: high-virulence has shorter infectious period (burn out faster)
+    Detection mechanism:
+    - kappa_high = kappa_base * (1 + kappa_scale * (phi_transmission - 1))
+    - Example: phi_transmission=1.1, kappa_scale=2 → 20% increase in detection
     """
     y = np.maximum(np.asarray(y, dtype=float), 0.0)
     S, Eh, Indh, Idh, Rh, El, Indl, Idl, Rl = y
 
-    if not hasattr(params, "__len__") or len(params) != 11:
-        raise ValueError("params must be a sequence of length 11")
+    if not hasattr(params, "__len__") or len(params) != 12:
+        raise ValueError("params must be a sequence of length 12")
 
-    (contact_rate, transmission_probability, birth_rate, death_rate, delta, kappa, p_recover,
-     phi_recover, phi_transmission, sigma, tau, theta) = params
+    (contact_rate, transmission_probability, birth_rate, death_rate, delta, 
+     kappa_base, kappa_scale, p_recover, phi_recover, phi_transmission, 
+     sigma, tau, theta) = params
 
-    # Additio  of contact rate and transmission probability to make beta_l
     beta_l = contact_rate * transmission_probability
-
-    # Transmission dynamics
     beta_h = phi_transmission * beta_l
     
-    # HIGH-VIRULENCE: Strong symptoms → both treated & untreated transmit
-    # (drug reduces symptoms but not enough to eliminate transmission)
-    B_h = beta_h * (Indh + p_recover * Idh)
+    # Compute kappa as function of virulence
+    virulence_excess = phi_transmission - 1.0
+    kappa_high = kappa_base * (1 + kappa_scale * virulence_excess)
+    kappa_low = kappa_base
     
-    # LOW-VIRULENCE: Mild symptoms → only untreated transmit
-    # (drug eliminates their weak symptoms → no transmission)
+    # Safety: ensure kappa * theta ≤ 1 (cannot treat more than 100%)
+    kappa_high = min(kappa_high, 1.0 / theta) if theta > 0 else kappa_high
+    kappa_low = min(kappa_low, 1.0 / theta) if theta > 0 else kappa_low
+    
+    # Ensure non-negative
+    kappa_high = max(0.0, kappa_high)
+    kappa_low = max(0.0, kappa_low)
+    
+    # Transmission dynamics
+    B_h = beta_h * (Indh + p_recover * Idh)
     B_l = beta_l * (Indl + p_recover * Idl)
 
     # ODEs
@@ -136,13 +133,13 @@ def SEIRS_model_v2(y, t, params):
     dEhdt = B_h * S - tau * Eh - death_rate * Eh
     dEldt = B_l * S - tau * El - death_rate * El
 
-    # Low-virulence progression and recovery
-    dIndldt = (1- theta) * tau * El - sigma * Indl - death_rate * Indl
-    dIdldt = theta * tau * El - sigma * Idl - death_rate * Idl
+    # High-virulence: uses kappa_high
+    dIndhdt = (1 - kappa_high * theta) * tau * Eh - phi_recover * sigma * Indh - death_rate * Indh
+    dIdhdt = kappa_high * theta * tau * Eh - phi_recover * sigma * Idh - death_rate * Idh
 
-    # High-virulence progression and recovery
-    dIndhdt = (1- kappa * theta) * tau * Eh - phi_recover * sigma * Indh - death_rate * Indh
-    dIdhdt = kappa * theta * tau * Eh - phi_recover * sigma * Idh - death_rate * Idh
+    # Low-virulence: uses kappa_low
+    dIndldt = (1 - kappa_low * theta) * tau * El - sigma * Indl - death_rate * Indl
+    dIdldt = kappa_low * theta * tau * El - sigma * Idl - death_rate * Idl
 
     # Recovery compartments
     dRhdt = phi_recover * sigma * (Idh + Indh) - delta * Rh - death_rate * Rh
