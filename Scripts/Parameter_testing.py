@@ -27,7 +27,8 @@ BASE_PARAMS = {
     'birth_rate': getattr(model_params, 'birth_rate', 0.0),
     'death_rate': getattr(model_params, 'death_rate', 0.0),
     'delta': getattr(model_params, 'delta', 1/90),
-    'delta_d': getattr(model_params, 'delta_d', 1/3),
+    'kappa_base': getattr(model_params, 'kappa_base', 1.0),
+    'kappa_scale': getattr(model_params, 'kappa_scale', 1.0),
     'p_recover': getattr(model_params, 'p_recover', 0.5),
     'phi_recover': getattr(model_params, 'phi_recover', 1.0),
     'phi_transmission': getattr(model_params, 'phi_transmission', 1.05),
@@ -86,7 +87,7 @@ PARAMETER_EXPERIMENTS = [
     {
         'name': 'p_recover_sweep',
         'param_name': 'p_recover',
-        'param_values': np.linspace(1.0, 2.0, 11),
+        'param_values': np.linspace(0.0, 1.0, 11),
         'outputs': ['Eh', 'El', 'Indh', 'Indl'],
         'plot_type': '1D'
     },
@@ -97,7 +98,7 @@ PARAMETER_EXPERIMENTS = [
         'param_name': 'theta',
         'param_values': np.linspace(0.0, 1.0, 21),
         'secondary_param': 'p_recover',
-        'secondary_values': np.linspace(1.0, 2.0, 21),
+        'secondary_values': np.linspace(0.0, 1.0, 21),
         'outputs': ['Eh_peak', 'El_peak'],  # special: peak values
         'plot_type': '2D'
     },
@@ -128,6 +129,26 @@ PARAMETER_EXPERIMENTS = [
         'param_values': 1 / np.array([30, 60, 90, 180, 365]),  # convert days to rate
         'outputs': ['Eh', 'El', 'Rh', 'Rl'],
         'plot_type': '1D'
+    },
+    
+    # Example 7: Detection sensitivity (kappa_scale)
+    {
+        'name': 'kappa_scale_sweep',
+        'param_name': 'kappa_scale',
+        'param_values': np.linspace(0.0, 3.0, 11),
+        'outputs': ['Eh', 'El', 'Idh', 'Idl'],
+        'plot_type': '1D'
+    },
+    
+    # Example 8: 2D heatmap of phi_transmission × kappa_scale
+    {
+        'name': 'virulence_detection_heatmap',
+        'param_name': 'phi_transmission',
+        'param_values': np.linspace(1.0, 1.2, 21),
+        'secondary_param': 'kappa_scale',
+        'secondary_values': np.linspace(0.0, 3.0, 21),
+        'outputs': ['Eh_peak', 'El_peak'],
+        'plot_type': '2D'
     }
 ]
 
@@ -143,7 +164,8 @@ def build_params_tuple(param_dict):
         param_dict['birth_rate'],
         param_dict['death_rate'],
         param_dict['delta'],
-        param_dict['delta_d'],
+        param_dict['kappa_base'],
+        param_dict['kappa_scale'],
         param_dict['p_recover'],
         param_dict['phi_recover'],
         param_dict['phi_transmission'],
@@ -187,11 +209,27 @@ def compute_R0_from_params(params_dict):
     p_recover = params_dict['p_recover']  # transmission reduction for treated
     sigma = params_dict['sigma']
     phi_recover = params_dict['phi_recover']
+    kappa_base = params_dict['kappa_base']
+    kappa_scale = params_dict['kappa_scale']
+    
+    # Compute kappa for both strains
+    virulence_excess = params_dict['phi_transmission'] - 1.0
+    kappa_high = kappa_base * (1 + kappa_scale * virulence_excess)
+    kappa_low = kappa_base
+    
+    # Safety: ensure kappa * theta ≤ 1
+    if theta > 0:
+        kappa_high = min(kappa_high, 1.0 / theta)
+        kappa_low = min(kappa_low, 1.0 / theta)
+    
+    # Effective treatment fractions
+    theta_eff_high = kappa_high * theta
+    theta_eff_low = kappa_low * theta
     
     # Effective transmission rates (weighted by treatment fraction)
     # beta_eff = beta * (fraction_untreated + p_recover * fraction_treated)
-    beta_eff_high = beta_h * (1 - theta + p_recover * theta)
-    beta_eff_low = beta_l * (1 - theta + p_recover * theta)
+    beta_eff_high = beta_h * (1 - theta_eff_high + p_recover * theta_eff_high)
+    beta_eff_low = beta_l * (1 - theta_eff_low + p_recover * theta_eff_low)
     
     # Effective recovery rates (phi_recover only affects high strain)
     sigma_eff_high = phi_recover * sigma
@@ -248,16 +286,24 @@ def run_1D_sweep(experiment):
         # Compute R0 values
         R0_low, R0_high = compute_R0_from_params(params_dict)
         
+        # Compute effective kappa values
+        virulence_excess = params_dict['phi_transmission'] - 1.0
+        kappa_high = params_dict['kappa_base'] * (1 + params_dict['kappa_scale'] * virulence_excess)
+        kappa_low = params_dict['kappa_base']
+        
         metadata.append({
             'param_value': param_val,
             'R0_low': R0_low,
             'R0_high': R0_high,
-            'R0_target': R0_target
+            'R0_target': R0_target,
+            'kappa_high': kappa_high,
+            'kappa_low': kappa_low
         })
         
         # Diagnostic output
         print(f"[{idx+1}/{len(param_values)}] {param_name}={param_val:.4f}  "
-              f"R0_low={R0_low:.3f}  R0_high={R0_high:.3f}")
+              f"R0_low={R0_low:.3f}  R0_high={R0_high:.3f}  "
+              f"kappa_high={kappa_high:.3f}")
     
     # Convert to arrays
     for out in outputs:
@@ -286,7 +332,7 @@ def run_1D_sweep(experiment):
         ax.grid(alpha=0.3)
     
     plt.tight_layout()
-    fig_path = f'./Figures/{experiment["name"]}.png'
+    fig_path = f'../Figures/{experiment["name"]}.png'
     plt.savefig(fig_path, dpi=600)
     print(f"Saved figure: {fig_path}")
     plt.show()
@@ -303,7 +349,7 @@ def run_1D_sweep(experiment):
         df_list.append(df_tmp)
     
     df = pd.concat(df_list, ignore_index=True)
-    csv_path = f'./Tables/{experiment["name"]}.csv'
+    csv_path = f'../Tables/{experiment["name"]}.csv'
     df.to_csv(csv_path, index=False)
     print(f"Saved data: {csv_path}")
 
@@ -371,7 +417,7 @@ def run_2D_sweep(experiment):
         plt.colorbar(im, ax=ax, label=out)
     
     plt.tight_layout()
-    fig_path = f'./Figures/{experiment["name"]}.png'
+    fig_path = f'../Figures/{experiment["name"]}.png'
     plt.savefig(fig_path, dpi=600)
     print(f"Saved figure: {fig_path}")
     plt.show()
@@ -389,7 +435,7 @@ def run_2D_sweep(experiment):
             df_list.append(row)
     
     df = pd.DataFrame(df_list)
-    csv_path = f'./Tables/{experiment["name"]}.csv'
+    csv_path = f'../Tables/{experiment["name"]}.csv'
     df.to_csv(csv_path, index=False)
     print(f"Saved data: {csv_path}")
 
