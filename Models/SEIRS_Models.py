@@ -1,7 +1,7 @@
 import numpy as np
 
 #%% ODE Model
-def SEIRS_first_model(y, t, params):
+def SEIRS_model_v1(y, t, params):
     """
     SEIRS model testing virulence-transmission trade-off with symptom-targeting drug.
     
@@ -68,6 +68,85 @@ def SEIRS_first_model(y, t, params):
     # Recovery compartments
     dRhdt = phi_recover * sigma * (p_recover * Idh + Indh) - delta * Rh - death_rate * Rh
     dRldt = sigma * (p_recover * Idl + Indl) - delta * Rl - death_rate * Rl
+
+    # Mass balance check
+    total = S + Eh + Indh + Idh + Rh + El + Indl + Idl + Rl
+    if not np.isfinite(total) or total <= 0:
+        raise RuntimeError("Non-finite or non-positive total population")
+    
+    return dSdt, dEhdt, dIndhdt, dIdhdt, dRhdt, dEldt, dIndldt, dIdldt, dRldt
+
+
+def SEIRS_model_v2(y, t, params):
+    """
+    SEIRS model testing virulence-transmission trade-off with symptom-targeting drug.
+    
+    Biological assumptions:
+    - Transmission requires symptoms (sneezing, coughing)
+    - Drug reduces symptoms but doesn't eliminate pathogen
+    - High-virulence: produces strong symptoms → treated individuals still transmit at reduced rate (to be tested)
+    - Low-virulence: produces mild symptoms → treatment reduces transmission significantly
+    
+    This tests hypothesis: Can drugs that mask symptoms allow "super-virulent" strains
+    to evolve by removing the constraint that high virulence = immobile/dead hosts?
+    
+    State vector y (length 9): [S, Eh, Indh, Idh, Rh, El, Indl, Idl, Rl]
+    
+    Parameters (11):
+    - beta_l: baseline transmission rate (low-virulence)
+    - birth_rate, death_rate: demographic rates
+    - delta: rate of waning immunity
+    - kappa: detection/treatment rate (proportion diagnosed)
+    - p_recover: treatment efficacy (proportion that recover faster)
+    - phi_recover: recovery rate modifier for high-strain (SET TO 1.0 for no effect currently)
+    - phi_transmission: transmission multiplier for high-strain (e.g., 1.05 = 5% higher R0)
+    - sigma: recovery rate
+    - tau: 1/latent period
+    - theta: treatment coverage (proportion of detected cases treated)
+    
+    Future extensions via phi_recover:
+    - < 1.0: high-virulence has longer infectious period (more virulent = sicker longer)
+    - > 1.0: high-virulence has shorter infectious period (burn out faster)
+    """
+    y = np.maximum(np.asarray(y, dtype=float), 0.0)
+    S, Eh, Indh, Idh, Rh, El, Indl, Idl, Rl = y
+
+    if not hasattr(params, "__len__") or len(params) != 11:
+        raise ValueError("params must be a sequence of length 11")
+
+    (contact_rate, transmission_probability, birth_rate, death_rate, delta, kappa, p_recover,
+     phi_recover, phi_transmission, sigma, tau, theta) = params
+
+    # Additio  of contact rate and transmission probability to make beta_l
+    beta_l = contact_rate * transmission_probability
+
+    # Transmission dynamics
+    beta_h = phi_transmission * beta_l
+    
+    # HIGH-VIRULENCE: Strong symptoms → both treated & untreated transmit
+    # (drug reduces symptoms but not enough to eliminate transmission)
+    B_h = beta_h * (Indh + p_recover * Idh)
+    
+    # LOW-VIRULENCE: Mild symptoms → only untreated transmit
+    # (drug eliminates their weak symptoms → no transmission)
+    B_l = beta_l * (Indl + p_recover * Idl)
+
+    # ODEs
+    dSdt = birth_rate - (B_h + B_l) * S + delta * (Rh + Rl) - death_rate * S
+    dEhdt = B_h * S - tau * Eh - death_rate * Eh
+    dEldt = B_l * S - tau * El - death_rate * El
+
+    # Low-virulence progression and recovery
+    dIndldt = (1- theta) * tau * El - sigma * Indl - death_rate * Indl
+    dIdldt = theta * tau * El - sigma * Idl - death_rate * Idl
+
+    # High-virulence progression and recovery
+    dIndhdt = (1- kappa * theta) * tau * Eh - phi_recover * sigma * Indh - death_rate * Indh
+    dIdhdt = kappa * theta * tau * Eh - phi_recover * sigma * Idh - death_rate * Idh
+
+    # Recovery compartments
+    dRhdt = phi_recover * sigma * (Idh + Indh) - delta * Rh - death_rate * Rh
+    dRldt = sigma * (Idl + Indl) - delta * Rl - death_rate * Rl
 
     # Mass balance check
     total = S + Eh + Indh + Idh + Rh + El + Indl + Idl + Rl

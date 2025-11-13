@@ -35,9 +35,11 @@ delta_d = 1/3          # detection rate (1 / mean delay to detection = 3 days)
 # Demography and transmission
 birth_rate = 0.0       # No births (short-term epidemic focus)
 death_rate = 0.0       # No background mortality (disease-induced mortality could be added)
-beta_l = 0.25          # baseline transmission rate for low-virulence strain
-                       # Results in R0_low ≈ beta_l/sigma = 2.5 (COVID-like)
-                       # Results in R0_high ≈ phi_transmission * R0_low = 2.625
+contact_rate = 10.0    # average contacts per person per day
+transmission_probability = 0.025  # probability of transmission per contact
+beta_l = contact_rate * transmission_probability  # baseline transmission rate for low-virulence strain
+                                                  # Results in R0_low ≈ beta_l/sigma = 2.5 (COVID-like)
+                                                  # Results in R0_high ≈ phi_transmission * R0_low = 2.625
 
 # Time grid defaults (used if scripts import these)
 t_max = 365            # simulation length in days
