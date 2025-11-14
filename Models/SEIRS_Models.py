@@ -101,8 +101,8 @@ def SEIRS_model_v2(y, t, params):
     y = np.maximum(np.asarray(y, dtype=float), 0.0)
     S, Eh, Indh, Idh, Rh, El, Indl, Idl, Rl = y
 
-    if not hasattr(params, "__len__") or len(params) != 12:
-        raise ValueError("params must be a sequence of length 12")
+    if not hasattr(params, "__len__") or len(params) != 13:
+        raise ValueError("params must be a sequence of length 13")
 
     (contact_rate, transmission_probability, birth_rate, death_rate, delta, 
      kappa_base, kappa_scale, p_recover, phi_recover, phi_transmission, 
