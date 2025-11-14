@@ -57,8 +57,8 @@ T_STEPS = int(getattr(model_params, 't_steps', 365))
 TIME_GRID = np.linspace(0, T_MAX, T_STEPS)
 
 # Output directories
-os.makedirs('../Figures', exist_ok=True)
-os.makedirs('../Tables', exist_ok=True)
+os.makedirs('./Figures', exist_ok=True)
+os.makedirs('./Tables', exist_ok=True)
 
 # ============================================================================
 # DEFINE YOUR EXPERIMENTS HERE
@@ -332,12 +332,12 @@ def run_1D_sweep(experiment):
         ax.grid(alpha=0.3)
     
     plt.tight_layout()
-    fig_path = f'../Figures/{experiment["name"]}.png'
+    fig_path = f'./Figures/{experiment["name"]}.png'
     plt.savefig(fig_path, dpi=600)
     print(f"Saved figure: {fig_path}")
-    plt.show()
+    plt.close()
     
-    # Save data
+    # Save data - FIXED: Use assignment instead of update
     df_list = []
     for i, param_val in enumerate(param_values):
         df_tmp = pd.DataFrame({'time': TIME_GRID})
@@ -345,11 +345,13 @@ def run_1D_sweep(experiment):
             df_tmp[out] = results[out][i, :]
         df_tmp['param_name'] = param_name
         df_tmp['param_value'] = param_val
-        df_tmp.update(metadata[i])
+        # Add metadata as columns (not update)
+        for key, value in metadata[i].items():
+            df_tmp[key] = value
         df_list.append(df_tmp)
     
     df = pd.concat(df_list, ignore_index=True)
-    csv_path = f'../Tables/{experiment["name"]}.csv'
+    csv_path = f'./Tables/{experiment["name"]}.csv'
     df.to_csv(csv_path, index=False)
     print(f"Saved data: {csv_path}")
 
@@ -417,7 +419,7 @@ def run_2D_sweep(experiment):
         plt.colorbar(im, ax=ax, label=out)
     
     plt.tight_layout()
-    fig_path = f'../Figures/{experiment["name"]}.png'
+    fig_path = f'./Figures/{experiment["name"]}.png'
     plt.savefig(fig_path, dpi=600)
     print(f"Saved figure: {fig_path}")
     plt.show()
@@ -435,7 +437,7 @@ def run_2D_sweep(experiment):
             df_list.append(row)
     
     df = pd.DataFrame(df_list)
-    csv_path = f'../Tables/{experiment["name"]}.csv'
+    csv_path = f'./Tables/{experiment["name"]}.csv'
     df.to_csv(csv_path, index=False)
     print(f"Saved data: {csv_path}")
 
