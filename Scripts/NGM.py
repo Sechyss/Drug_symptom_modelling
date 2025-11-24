@@ -1,69 +1,49 @@
+import os
+import sys
 import numpy as np
-from numpy.linalg import eigvals, inv
-from scipy.integrate import odeint
-from Models.SEIRS_Models import SEIRS_first_model  # the ODE model function to integrate
-from Models import params as model_params  # import default parameters
+from numpy.linalg import eigvals
 
-# Make any stochastic behaviour reproducible
-np.random.seed(42)
+# Add parent directory to path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from Models import params as model_params
 
 """
 NGM.py
 
-Compute the Next-Generation Matrix (NGM) and R0 for an SEIRS model.
-
-This script uses the imported SEIRS_first_model and model_params directly.
-
-Output:
-- F, V, NGM matrices (restricted to infected compartments) and R0 (spectral radius)
-
-Usage:
-    python3 NGM.py
+Next Generation Matrix (NGM) computation for SEIRS model v2.
+Computes R0 and related metrics using the NGM approach.
 """
 
-# ---------------------------
-# Load parameters from imported module
-# ---------------------------
 def load_params():
-    """Extract parameters from model_params module"""
-    params = {
-        'beta_l': getattr(model_params, "beta_l", 0.25),
-        'birth_rate': getattr(model_params, "birth_rate", 0.0),
-        'death_rate': getattr(model_params, "death_rate", 0.0),
-        'delta': getattr(model_params, "delta", 1/90),
-        'delta_d': getattr(model_params, "delta_d", 1/3),
-        'p_recover': getattr(model_params, "p_recover", 1.5),
-        'phi_recover': getattr(model_params, "phi_recover", 1.0),
-        'sigma': getattr(model_params, "sigma", 1/10),
-        'tau': getattr(model_params, "tau", 1/3),
-        'phi_transmission': getattr(model_params, "phi_transmission", 1.05),
-        'theta': getattr(model_params, "theta", 0.3),
-        'N': getattr(model_params, "S", 10000) + getattr(model_params, "Eh", 0) + 
-             getattr(model_params, "Indh", 5) + getattr(model_params, "Idh", 0) + 
-             getattr(model_params, "Rh", 0) + getattr(model_params, "El", 0) + 
-             getattr(model_params, "Indl", 5) + getattr(model_params, "Idl", 0) + 
-             getattr(model_params, "Rl", 0)
+    """Load parameters from Models.params into a dictionary."""
+    params_dict = {
+        'contact_rate': getattr(model_params, 'contact_rate', 10.0),
+        'transmission_probability': getattr(model_params, 'transmission_probability', 0.025),
+        'birth_rate': getattr(model_params, 'birth_rate', 0.0),
+        'death_rate': getattr(model_params, 'death_rate', 0.0),
+        'delta': getattr(model_params, 'delta', 1/120),
+        'kappa_base': getattr(model_params, 'kappa_base', 1.0),
+        'kappa_scale': getattr(model_params, 'kappa_scale', 1.0),
+        'p_recover': getattr(model_params, 'p_recover', 0.5),
+        'phi_recover': getattr(model_params, 'phi_recover', 1.0),
+        'phi_transmission': getattr(model_params, 'phi_transmission', 1.05),
+        'sigma': getattr(model_params, 'sigma', 1/5),
+        'tau': getattr(model_params, 'tau', 1/3),
+        'theta': getattr(model_params, 'theta', 0.3)
     }
-    return params
+    return params_dict
 
-# ---------------------------
-# Define model structure
-# ---------------------------
-# Compartment order for SEIRS_first_model: [S, Eh, Indh, Idh, Rh, El, Indl, Idl, Rl]
-COMPARTMENTS = ['S', 'Eh', 'Indh', 'Idh', 'Rh', 'El', 'Indl', 'Idl', 'Rl']
-INFECTED_COMPARTMENTS = ['Eh', 'Indh', 'Idh', 'El', 'Indl', 'Idl']  # All infected states
-
-# ---------------------------
-# Wrapper for derivative function
-# ---------------------------
-def deriv(x, params_dict):
-    """Wrapper to call SEIRS_first_model with correct parameter format"""
-    params_tuple = (
-        params_dict['beta_l'],
+def params_dict_to_tuple(params_dict):
+    """Convert parameter dictionary to tuple for model functions."""
+    return (
+        params_dict['contact_rate'],
+        params_dict['transmission_probability'],
         params_dict['birth_rate'],
         params_dict['death_rate'],
         params_dict['delta'],
-        params_dict['delta_d'],
+        params_dict['kappa_base'],
+        params_dict['kappa_scale'],
         params_dict['p_recover'],
         params_dict['phi_recover'],
         params_dict['phi_transmission'],
@@ -71,168 +51,222 @@ def deriv(x, params_dict):
         params_dict['tau'],
         params_dict['theta']
     )
-    # SEIRS_first_model expects (y, t, params)
-    return SEIRS_first_model(x, 0, params_tuple)
 
-# ---------------------------
-# Define new infections function
-# ---------------------------
 def new_infections(x, params_dict):
     """
-    Returns vector of NEW infection terms for each compartment.
-    For SEIRS model, only S compartment generates new infections.
-    """
-    S, Eh, Indh, Idh, Rh, El, Indl, Idl, Rl = x
+    New infection terms F_i for NGM.
+    State vector x = [Eh, El, Indh, Indl, Idh, Idl]
     
-    beta_l = params_dict['beta_l']
+    Returns only the NEW INFECTION terms (transmission from infected to susceptible).
+    """
+    Eh, El, Indh, Indl, Idh, Idl = x
+    
+    # Extract parameters
+    contact_rate = params_dict['contact_rate']
+    trans_prob = params_dict['transmission_probability']
+    p_recover = params_dict['p_recover']
     phi_transmission = params_dict['phi_transmission']
+    
+    # Compute betas
+    beta_l = contact_rate * trans_prob
+    beta_h = phi_transmission * beta_l
+    
+    # At DFE, S ≈ 1 (assume total population normalized to 1)
+    S = 1.0
+    
+    # New infections (force of infection terms)
+    # High strain: beta_h * S * (Indh + p_recover * Idh)
+    # Low strain: beta_l * S * (Indl + p_recover * Idl)
+    F = np.array([
+        beta_h * S * (Indh + p_recover * Idh),  # dEh/dt (new infections)
+        beta_l * S * (Indl + p_recover * Idl),  # dEl/dt (new infections)
+        0.0,  # Indh (no new infections, just progression)
+        0.0,  # Indl
+        0.0,  # Idh
+        0.0   # Idl
+    ])
+    
+    return F
+
+def deriv(x, params_dict):
+    """
+    All derivative terms for infected compartments.
+    This includes both new infections (F) and transitions (V).
+    
+    Returns: dx/dt for x = [Eh, El, Indh, Indl, Idh, Idl]
+    """
+    Eh, El, Indh, Indl, Idh, Idl = x
+    
+    # Extract parameters
+    contact_rate = params_dict['contact_rate']
+    trans_prob = params_dict['transmission_probability']
+    death_rate = params_dict['death_rate']
+    kappa_base = params_dict['kappa_base']
+    kappa_scale = params_dict['kappa_scale']
+    p_recover = params_dict['p_recover']
+    phi_recover = params_dict['phi_recover']
+    phi_transmission = params_dict['phi_transmission']
+    sigma = params_dict['sigma']
+    tau = params_dict['tau']
     theta = params_dict['theta']
     
-    # Force of infection from high-virulence strain
-    lambda_h = beta_l * phi_transmission * (Indh + Idh)
+    # Compute betas
+    beta_l = contact_rate * trans_prob
+    beta_h = phi_transmission * beta_l
     
-    # Force of infection from low-virulence strain
-    lambda_l = beta_l * (Indl + Idl)
+    # Compute kappa values
+    virulence_excess = phi_transmission - 1.0
+    kappa_high = kappa_base * (1 + kappa_scale * virulence_excess)
+    kappa_low = kappa_base
     
-    # New infections
-    new_inf_high = lambda_h * S
-    new_inf_low = lambda_l * S
+    # Safety: ensure kappa * theta ≤ 1
+    if theta > 0:
+        kappa_high = min(kappa_high, 1.0 / theta)
+        kappa_low = min(kappa_low, 1.0 / theta)
     
-    # Return vector: new infections per compartment
-    # Only S→Eh and S→El have new infections, others are 0
-    return np.array([
-        0,              # S (loses infections, doesn't gain)
-        new_inf_high,   # Eh (gains from S)
-        0,              # Indh
-        0,              # Idh
-        0,              # Rh
-        new_inf_low,    # El (gains from S)
-        0,              # Indl
-        0,              # Idl
-        0               # Rl
+    # At DFE, S ≈ 1
+    S = 1.0
+    
+    # Derivative terms (matching SEIRS_model_v2)
+    dxdt = np.array([
+        # dEh/dt = new infections - progression - death
+        beta_h * S * (Indh + p_recover * Idh) - tau * Eh - death_rate * Eh,
+        
+        # dEl/dt
+        beta_l * S * (Indl + p_recover * Idl) - tau * El - death_rate * El,
+        
+        # dIndh/dt = progression from Eh (untreated fraction) - recovery - death
+        (1 - kappa_high * theta) * tau * Eh - phi_recover * sigma * Indh - death_rate * Indh,
+        
+        # dIndl/dt
+        (1 - kappa_low * theta) * tau * El - sigma * Indl - death_rate * Indl,
+        
+        # dIdh/dt = progression from Eh (treated fraction) - recovery - death
+        kappa_high * theta * tau * Eh - phi_recover * sigma * Idh - death_rate * Idh,
+        
+        # dIdl/dt
+        kappa_low * theta * tau * El - sigma * Idl - death_rate * Idl
     ])
+    
+    return dxdt
 
-# ---------------------------
-# Numerical Jacobian
-# ---------------------------
-def jacobian(fun, x, params, eps=1e-8):
+def jacobian(fun, x, params_dict, eps=1e-8):
+    """
+    Compute Jacobian matrix numerically using finite differences.
+    
+    Args:
+        fun: function f(x, params_dict) returning array
+        x: point at which to evaluate Jacobian
+        params_dict: parameter dictionary
+        eps: finite difference step size
+    
+    Returns:
+        J: Jacobian matrix (m × n) where m = len(f(x)), n = len(x)
+    """
     x = np.asarray(x, dtype=float)
     n = x.size
-    f0 = np.asarray(fun(x, params), dtype=float)
+    f0 = np.asarray(fun(x, params_dict), dtype=float)
     m = f0.size
     J = np.zeros((m, n), dtype=float)
-    # central differences
-    for i in range(n):
-        dx = np.zeros_like(x)
-        h = eps * max(1.0, abs(x[i]))
-        dx[i] = h
-        f_plus = np.asarray(fun(x + dx, params), dtype=float)
-        f_minus = np.asarray(fun(x - dx, params), dtype=float)
-        J[:, i] = (f_plus - f_minus) / (2*h)
+    
+    for j in range(n):
+        x_plus = x.copy()
+        x_plus[j] += eps
+        f_plus = fun(x_plus, params_dict)
+        J[:, j] = (f_plus - f0) / eps
+    
     return J
 
-# ---------------------------
-# Build disease-free equilibrium (DFE)
-# ---------------------------
-def build_DFE(params):
+def compute_NGM(params_dict):
     """
-    Disease-free equilibrium: all population in S, no infections.
-    Returns state vector normalized to proportions.
+    Compute Next Generation Matrix and R0.
+    
+    The NGM approach:
+    1. Identify disease-free equilibrium (DFE)
+    2. Linearize around DFE: dx/dt = (F - V)x
+       - F: new infections
+       - V: transitions out of infected compartments
+    3. Compute K = F V^(-1) (next generation matrix)
+    4. R0 = spectral radius of K (largest eigenvalue)
+    
+    Args:
+        params_dict: dictionary of model parameters
+    
+    Returns:
+        dict with keys:
+            - R0: basic reproduction number
+            - eigenvalues: all eigenvalues of NGM
+            - NGM: the next generation matrix K
+            - F_matrix: Jacobian of new infections
+            - V_matrix: Jacobian of transitions
     """
-    N = params['N']
-    # DFE: [S=N, Eh=0, Indh=0, Idh=0, Rh=0, El=0, Indl=0, Idl=0, Rl=0]
-    x0 = np.array([N, 0, 0, 0, 0, 0, 0, 0, 0], dtype=float)
-    # Normalize to proportions (as model expects fractions)
-    return x0 / x0.sum()
-
-# ---------------------------
-# Main NGM computation
-# ---------------------------
-def compute_NGM(params):
-    """Compute Next-Generation Matrix and R0"""
-    
-    # Get infected compartment indices
-    infected_idx = [COMPARTMENTS.index(name) for name in INFECTED_COMPARTMENTS]
-    
-    # Build DFE state
-    x0 = build_DFE(params)
+    # Disease-free equilibrium for infected compartments
+    # x = [Eh, El, Indh, Indl, Idh, Idl] all zero
+    x0 = np.zeros(6)
     
     # Compute Jacobians at DFE
-    JF = jacobian(new_infections, x0, params)  # dF/dx
-    Jf = jacobian(deriv, x0, params)           # df/dx
+    JF = jacobian(new_infections, x0, params_dict)  # dF/dx
+    Jf = jacobian(deriv, x0, params_dict)           # df/dx
     
     # V = F - f  (since f = F - V  => V = F - f)
     JV = JF - Jf
     
-    # Restrict to infected compartments
-    idx = np.ix_(infected_idx, infected_idx)
-    F_block = JF[idx]
-    V_block = JV[idx]
-    
-    # Invert V_block
+    # Compute next generation matrix K = F V^(-1)
     try:
-        V_inv = inv(V_block)
-    except Exception as e:
-        raise np.linalg.LinAlgError(f"V matrix is singular or not invertible: {e}")
+        V_inv = np.linalg.inv(JV)
+        K = JF @ V_inv
+    except np.linalg.LinAlgError:
+        print("Warning: V matrix is singular, cannot compute NGM")
+        return {
+            'R0': np.nan,
+            'eigenvalues': np.array([np.nan]),
+            'NGM': np.full((6, 6), np.nan),
+            'F_matrix': JF,
+            'V_matrix': JV
+        }
     
-    # Next-Generation Matrix
-    NGM = F_block @ V_inv
+    # Compute eigenvalues of K
+    eigs = eigvals(K)
     
-    # Compute R0 (spectral radius)
-    eigs = eigvals(NGM)
-    R0 = max(np.real(eigs))
+    # R0 is the spectral radius (largest eigenvalue magnitude)
+    R0 = np.max(np.abs(eigs))
     
     return {
-        'compartments': COMPARTMENTS,
-        'infected_names': INFECTED_COMPARTMENTS,
-        'F': F_block,
-        'V': V_block,
-        'NGM': NGM,
-        'eigenvalues': eigs,
         'R0': R0,
-        'DFE': x0
+        'eigenvalues': eigs,
+        'NGM': K,
+        'F_matrix': JF,
+        'V_matrix': JV
     }
 
-# ---------------------------
-# CLI / run
-# ---------------------------
-def main():
+if __name__ == '__main__':
+    print("="*60)
+    print("Next Generation Matrix Analysis")
+    print("="*60)
+    
+    # Load parameters
     params = load_params()
     
-    print("="*60)
-    print("Next-Generation Matrix (NGM) Analysis")
-    print("="*60)
-    print("\nLoaded parameters:")
-    for k, v in params.items():
-        if k != 'N':
-            print(f"  {k}: {v}")
-    print(f"  Total population (N): {params['N']}")
+    print("\nParameters:")
+    for key, val in params.items():
+        print(f"  {key:25s}: {val}")
     
-    res = compute_NGM(params)
+    # Compute NGM
+    result = compute_NGM(params)
     
-    # Print results
-    np.set_printoptions(precision=6, suppress=True)
-    print("\n" + "="*60)
-    print("Results:")
-    print("="*60)
-    print(f"\nCompartment order: {res['compartments']}")
-    print(f"Infected compartments: {res['infected_names']}")
-    print(f"\nDFE state (normalized):\n{res['DFE']}")
-    print(f"\nF matrix (new infections, infected block):\n{res['F']}")
-    print(f"\nV matrix (transitions, infected block):\n{res['V']}")
-    print(f"\nNext-Generation Matrix (NGM = F @ V^(-1)):\n{res['NGM']}")
-    print(f"\nEigenvalues of NGM:\n{res['eigenvalues']}")
     print(f"\n{'='*60}")
-    print(f"Basic Reproduction Number (R0): {res['R0']:.6f}")
+    print(f"R₀ = {result['R0']:.4f}")
     print(f"{'='*60}")
     
-    # Interpretation
-    if res['R0'] > 1:
-        print("\n  R0 > 1: Disease will spread in the population")
-    elif res['R0'] < 1:
-        print("\n  R0 < 1: Disease will die out")
-    else:
-        print("\n  R0 = 1: Disease at threshold (endemic equilibrium)")
-
-if __name__ == '__main__':
-    main()
+    print("\nEigenvalues of NGM:")
+    for i, eig in enumerate(result['eigenvalues']):
+        print(f"  λ_{i+1} = {eig:.4f}")
+    
+    print("\nNext Generation Matrix K:")
+    print(result['NGM'])
+    
+    print("\nF matrix (new infections):")
+    print(result['F_matrix'])
+    
+    print("\nV matrix (transitions):")
+    print(result['V_matrix'])

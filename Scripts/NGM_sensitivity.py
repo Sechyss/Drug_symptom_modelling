@@ -1,30 +1,44 @@
+import os
+import sys
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
-from NGM import compute_NGM, load_params
+
+# Add parent directory to path to allow imports from Models/
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from Scripts.NGM import compute_NGM, load_params
 
 """
 NGM_sensitivity.py
 
 Sensitivity analysis of R0 to individual parameter changes.
 Shows which parameters most strongly affect disease transmission.
+Updated for SEIRS_model_v2 with kappa-based detection mechanism.
 """
+
+# Create output directories
+os.makedirs('../Figures', exist_ok=True)
+os.makedirs('../Tables', exist_ok=True)
 
 params = load_params()
 baseline_R0 = compute_NGM(params)['R0']
 
 print("="*60)
-print("R₀ Sensitivity Analysis")
+print("R₀ Sensitivity Analysis (Model v2)")
 print("="*60)
 print(f"Baseline R₀: {baseline_R0:.4f}\n")
 
 # Define parameter ranges for sensitivity
 param_ranges = {
-    'beta_l': np.linspace(0.1, 0.4, 30),
-    'p_recover': np.linspace(0.5, 2.5, 30),
+    'contact_rate': np.linspace(5.0, 15.0, 30),
+    'transmission_probability': np.linspace(0.01, 0.05, 30),
+    'p_recover': np.linspace(0.0, 1.0, 30),  # Updated: now transmission reduction
     'theta': np.linspace(0.0, 1.0, 30),
     'phi_transmission': np.linspace(1.0, 1.2, 30),
-    'phi_recover': np.linspace(0.8, 1.0, 30),
+    'phi_recover': np.linspace(0.5, 1.5, 30),
+    'kappa_base': np.linspace(0.5, 2.0, 30),
+    'kappa_scale': np.linspace(0.0, 3.0, 30),
     'sigma': np.linspace(1/20, 1/5, 30),
     'tau': np.linspace(1/5, 1/1, 30),
     'delta': np.linspace(1/180, 1/30, 30)
@@ -43,37 +57,59 @@ for param_name, param_values in param_ranges.items():
         try:
             result = compute_NGM(test_params)
             R0_values.append(result['R0'])
-        except:
+        except Exception as e:
             R0_values.append(np.nan)
     
     results[param_name] = {
         'values': param_values,
         'R0': np.array(R0_values)
     }
+    
+    # Print parameter info
+    n_valid = np.sum(~np.isnan(R0_values))
+    print(f"  {param_name:25s}: {n_valid:2d}/{len(param_values)} valid R₀ values")
+
+print()
 
 # Plotting
-fig, axes = plt.subplots(2, 4, figsize=(16, 8))
+fig, axes = plt.subplots(3, 4, figsize=(18, 12))
 axes = axes.flatten()
 
 for idx, (param_name, data) in enumerate(results.items()):
     ax = axes[idx]
     
-    ax.plot(data['values'], data['R0'], 'b-', linewidth=2)
+    # Remove NaN values for plotting
+    valid_mask = ~np.isnan(data['R0'])
+    valid_values = data['values'][valid_mask]
+    valid_R0 = data['R0'][valid_mask]
+    
+    ax.plot(valid_values, valid_R0, 'b-', linewidth=2)
     ax.axhline(1.0, color='red', linestyle='--', linewidth=1, alpha=0.7, label='R₀=1')
     ax.axhline(baseline_R0, color='gray', linestyle=':', linewidth=1, alpha=0.7, label='Baseline')
     
-    ax.set_xlabel(param_name)
-    ax.set_ylabel('R₀')
-    ax.set_title(f'Effect of {param_name} on R₀')
+    # Mark baseline parameter value
+    baseline_val = params[param_name]
+    if baseline_val >= valid_values.min() and baseline_val <= valid_values.max():
+        baseline_R0_interp = np.interp(baseline_val, valid_values, valid_R0)
+        ax.plot(baseline_val, baseline_R0_interp, 'ro', markersize=8, 
+                label='Current', zorder=5)
+    
+    ax.set_xlabel(param_name, fontsize=10)
+    ax.set_ylabel('R₀', fontsize=10)
+    ax.set_title(f'Effect of {param_name} on R₀', fontsize=11)
     ax.grid(True, alpha=0.3)
     
     if idx == 0:
         ax.legend(fontsize=8)
 
+# Hide extra subplots
+for idx in range(len(results), len(axes)):
+    axes[idx].axis('off')
+
 plt.tight_layout()
-plt.savefig('./Figures/R0_sensitivity_analysis.png', dpi=600)
-print("Saved: ./Figures/R0_sensitivity_analysis.png")
-plt.show()
+plt.savefig('../Figures/R0_sensitivity_analysis_v2.png', dpi=600)
+print("Saved: ../Figures/R0_sensitivity_analysis_v2.png")
+plt.close()
 
 # Compute normalized sensitivity indices
 print("\nNormalized Sensitivity Indices:")
@@ -84,18 +120,36 @@ for param_name, data in results.items():
     # Find R0 at ±10% of baseline parameter value
     baseline_val = params[param_name]
     
+    # Handle edge case: baseline_val might be 0 (e.g., birth_rate)
+    if baseline_val == 0:
+        print(f"  {param_name:25s}: N/A (baseline = 0)")
+        continue
+    
     # Interpolate R0 at baseline ± 10%
     low_val = baseline_val * 0.9
     high_val = baseline_val * 1.1
     
-    R0_low = np.interp(low_val, data['values'], data['R0'])
-    R0_high = np.interp(high_val, data['values'], data['R0'])
+    # Check if values are within range
+    valid_mask = ~np.isnan(data['R0'])
+    valid_values = data['values'][valid_mask]
+    valid_R0 = data['R0'][valid_mask]
+    
+    if len(valid_values) < 2:
+        print(f"  {param_name:25s}: N/A (insufficient data)")
+        continue
+    
+    if low_val < valid_values.min() or high_val > valid_values.max():
+        print(f"  {param_name:25s}: N/A (out of range)")
+        continue
+    
+    R0_low = np.interp(low_val, valid_values, valid_R0)
+    R0_high = np.interp(high_val, valid_values, valid_R0)
     
     # Sensitivity = (ΔR0 / R0) / (Δparam / param)
     sensitivity = (R0_high - R0_low) / baseline_R0 / 0.2  # 0.2 = 20% total change
     sensitivity_indices[param_name] = sensitivity
     
-    print(f"  {param_name:20s}: {sensitivity:+.4f}")
+    print(f"  {param_name:25s}: {sensitivity:+.4f}")
 
 # Save sensitivity results
 df_sens = pd.DataFrame({
@@ -103,18 +157,94 @@ df_sens = pd.DataFrame({
     'sensitivity_index': list(sensitivity_indices.values())
 }).sort_values('sensitivity_index', key=abs, ascending=False)
 
-df_sens.to_csv('./Tables/R0_sensitivity_indices.csv', index=False)
-print("\nSaved: ./Tables/R0_sensitivity_indices.csv")
+df_sens.to_csv('../Tables/R0_sensitivity_indices_v2.csv', index=False)
+print("\nSaved: ../Tables/R0_sensitivity_indices_v2.csv")
 
 # Bar plot of sensitivities
-plt.figure(figsize=(10, 6))
+plt.figure(figsize=(10, 8))
 colors = ['red' if s < 0 else 'green' for s in df_sens['sensitivity_index']]
 plt.barh(df_sens['parameter'], df_sens['sensitivity_index'], color=colors, alpha=0.7)
-plt.xlabel('Normalized Sensitivity Index')
-plt.title('Parameter Sensitivity of R₀\n(Positive = increasing parameter increases R₀)')
+plt.xlabel('Normalized Sensitivity Index', fontsize=12)
+plt.title('Parameter Sensitivity of R₀ (Model v2)\n(Positive = increasing parameter increases R₀)', 
+          fontsize=13)
 plt.axvline(0, color='black', linewidth=0.8)
 plt.grid(True, alpha=0.3, axis='x')
 plt.tight_layout()
-plt.savefig('./Figures/R0_sensitivity_barplot.png', dpi=600)
-print("Saved: ./Figures/R0_sensitivity_barplot.png")
-plt.show()
+plt.savefig('../Figures/R0_sensitivity_barplot_v2.png', dpi=600)
+print("Saved: ../Figures/R0_sensitivity_barplot_v2.png")
+plt.close()
+
+# Additional analysis: Combined effects of key parameters
+print("\n" + "="*60)
+print("Combined Parameter Effects")
+print("="*60)
+
+# Effect of theta × kappa_scale interaction
+theta_vals = np.linspace(0.0, 1.0, 20)
+kappa_scale_vals = [0.0, 1.0, 2.0, 3.0]
+
+plt.figure(figsize=(10, 6))
+
+for kappa_scale in kappa_scale_vals:
+    R0_theta = []
+    for theta_val in theta_vals:
+        test_params = params.copy()
+        test_params['theta'] = theta_val
+        test_params['kappa_scale'] = kappa_scale
+        
+        try:
+            result = compute_NGM(test_params)
+            R0_theta.append(result['R0'])
+        except:
+            R0_theta.append(np.nan)
+    
+    plt.plot(theta_vals, R0_theta, 'o-', linewidth=2, 
+             label=f'kappa_scale={kappa_scale}')
+
+plt.axhline(1.0, color='red', linestyle='--', linewidth=1, alpha=0.7, label='R₀=1')
+plt.xlabel('Treatment coverage (θ)', fontsize=12)
+plt.ylabel('R₀', fontsize=12)
+plt.title('Effect of Treatment Coverage × Detection Sensitivity on R₀', fontsize=13)
+plt.legend()
+plt.grid(True, alpha=0.3)
+plt.tight_layout()
+plt.savefig('../Figures/theta_kappa_interaction_v2.png', dpi=600)
+print("\nSaved: ../Figures/theta_kappa_interaction_v2.png")
+plt.close()
+
+# Effect of phi_transmission × p_recover interaction
+phi_trans_vals = np.linspace(1.0, 1.2, 20)
+p_recover_vals = [0.0, 0.25, 0.5, 0.75, 1.0]
+
+plt.figure(figsize=(10, 6))
+
+for p_rec in p_recover_vals:
+    R0_phi = []
+    for phi_val in phi_trans_vals:
+        test_params = params.copy()
+        test_params['phi_transmission'] = phi_val
+        test_params['p_recover'] = p_rec
+        
+        try:
+            result = compute_NGM(test_params)
+            R0_phi.append(result['R0'])
+        except:
+            R0_phi.append(np.nan)
+    
+    plt.plot(phi_trans_vals, R0_phi, 'o-', linewidth=2, 
+             label=f'p_recover={p_rec}')
+
+plt.axhline(1.0, color='red', linestyle='--', linewidth=1, alpha=0.7, label='R₀=1')
+plt.xlabel('Virulence multiplier (φ_transmission)', fontsize=12)
+plt.ylabel('R₀', fontsize=12)
+plt.title('Effect of Virulence × Treatment Efficacy on R₀', fontsize=13)
+plt.legend()
+plt.grid(True, alpha=0.3)
+plt.tight_layout()
+plt.savefig('../Figures/phi_p_recover_interaction_v2.png', dpi=600)
+print("Saved: ../Figures/phi_p_recover_interaction_v2.png")
+plt.close()
+
+print("\n" + "="*60)
+print("Analysis complete!")
+print("="*60)
