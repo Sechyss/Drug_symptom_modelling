@@ -1,0 +1,10 @@
+parameter,sensitivity_index
+contact_rate,1.0
+transmission_probability,1.0
+phi_recover,-0.7532330663635475
+p_recover,0.18694362017804256
+kappa_base,-0.18694362017804256
+theta,-0.18694362017804156
+kappa_scale,-0.00890207715133364
+tau,0.0
+delta,0.0
