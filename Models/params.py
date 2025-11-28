@@ -65,3 +65,31 @@ kappa_scale = 1.0       # moderate sensitivity to virulence
 # p_recover: 1.1 - 2.0 (vary treatment efficacy)
 # phi_transmission: 1.01 - 1.2 (vary virulence advantage)
 # delta: 1/365 (1 year) - 1/30 (1 month) (vary immunity duration)
+
+# -------------------
+# Model v2 defaults
+# -------------------
+contact_rate = 10.0
+transmission_probability = 0.025
+beta_l = contact_rate * transmission_probability  # v2: low-strain beta
+
+# -------------------
+# Model v3 additions
+# -------------------
+# Separate contact rate for high-virulence strain (untreated)
+contact_rate_high = 5.0  # default different from low; adjust as needed
+
+# Drug effects applied to treated infectious individuals only
+drug_contact_multiplier = 1.20      # m_c > 1: treated have more contacts
+drug_transmission_multiplier = 0.50 # m_r < 1: treated transmit less per contact
+
+# v3 uses the same transmission_probability_low as v2's transmission_probability
+transmission_probability_low = transmission_probability  # alias for clarity
+
+# Derived betas for v3 (optional; models/scripts typically recompute)
+beta_l_v3 = contact_rate * transmission_probability_low
+beta_h_v3 = contact_rate_high * transmission_probability_low * phi_transmission
+
+# Time grid defaults
+t_max = 365
+t_steps = 365
