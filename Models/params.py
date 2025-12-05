@@ -17,7 +17,7 @@ theta = 0.3            # fraction of DETECTED cases that get treated (0..1)
 p_recover = 0.5        # treated transmission rate multiplier (<1 means less transmission)
 
 # Virulence modifiers
-phi_transmission = 1.05 # multiplier for high-virulence transmission (beta_h = phi_transmission * beta_l)
+phi_transmission = 1.5 # multiplier for high-virulence transmission (beta_h = phi_transmission * beta_l)
 
 phi_recover = 1.0       # modifier for high-virulence recovery rate (currently no effect)
                         # Future use: <1 = slower recovery (longer infectious period)
@@ -34,7 +34,7 @@ death_rate = 0.0       # No background mortality (disease-induced mortality coul
 contact_rate = 10.0    # average contacts per person per day
 transmission_probability = 0.025  # probability of transmission per contact
 beta_l = contact_rate * transmission_probability  # baseline transmission rate for low-virulence strain
-                                                  # Results in R0_low ≈ beta_l/sigma = 2.5 (COVID-like)
+                                                  # Results in R0_low ≈ beta_l/sigma = 1.25
                                                   # Results in R0_high ≈ phi_transmission * R0_low = 2.625
 
 # Time grid defaults (used if scripts import these)
@@ -67,21 +67,14 @@ kappa_scale = 1.0       # moderate sensitivity to virulence
 # delta: 1/365 (1 year) - 1/30 (1 month) (vary immunity duration)
 
 # -------------------
-# Model v2 defaults
-# -------------------
-contact_rate = 10.0
-transmission_probability = 0.025
-beta_l = contact_rate * transmission_probability  # v2: low-strain beta
-
-# -------------------
 # Model v3 additions
 # -------------------
 # Separate contact rate for high-virulence strain (untreated)
-contact_rate_high = 5.0  # default different from low; adjust as needed
+contact_rate_high = 8  # default different from low; adjust as needed
 
 # Drug effects applied to treated infectious individuals only
 drug_contact_multiplier = 1.20      # m_c > 1: treated have more contacts
-drug_transmission_multiplier = 0.50 # m_r < 1: treated transmit less per contact
+drug_transmission_multiplier = 0.75 # m_r < 1: treated transmit less per contact
 
 # v3 uses the same transmission_probability_low as v2's transmission_probability
 transmission_probability_low = transmission_probability  # alias for clarity
