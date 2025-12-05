@@ -219,10 +219,10 @@ def SEIRS_model_v3(y, t, params):
     sigma_l = sigma
 
     dIndhdt = (1.0 - theta_high) * tau * Eh - sigma_h * Indh - death_rate * Indh
-    dIdhdt  = theta_high * tau * Eh              - sigma_h * Idh  - death_rate * Idh
+    dIdhdt  = theta_high * tau * Eh - sigma_h * Idh  - death_rate * Idh
 
     dIndldt = (1.0 - theta_low)  * tau * El - sigma_l * Indl - death_rate * Indl
-    dIdldt  = theta_low * tau * El          - sigma_l * Idl  - death_rate * Idl
+    dIdldt  = theta_low * tau * El - sigma_l * Idl  - death_rate * Idl
 
     dRhdt = sigma_h * (Indh + Idh) - delta * Rh - death_rate * Rh
     dRldt = sigma_l * (Indl + Idl) - delta * Rl - death_rate * Rl
