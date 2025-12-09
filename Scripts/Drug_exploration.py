@@ -16,12 +16,12 @@ Usage (from repo root):
   # Run baseline vs drug-from-params scenario
   python Scripts/Drug_exploration.py run --days 200
 
-  # Sweep drug multipliers and visualize peak infections
-  python Scripts/Drug_exploration.py sweep --m-c 0.8 1.0 1.2 --m-r 0.3 0.5 0.8 --days 200
+  # Sweep drug multipliers and visualize peak force of infection
+  python Scripts/Drug_exploration.py sweep --days 200
 
 Outputs:
   - Figures/drug_v3_time_series.png
-  - Figures/drug_v3_sweep_heatmap.png (for sweep)
+  - Figures/drug_v3_sweep_heatmap_foi.png (for sweep)
   - Tables/drug_v3_summary.csv
 """
 
@@ -231,42 +231,37 @@ def cmd_run(args: argparse.Namespace) -> None:
 def cmd_sweep(args: argparse.Namespace) -> None:
     """
     Sweep drug multipliers over grids of m_c and m_r and plot a heatmap of
-    the total untreated peak (Indh + Indl). Useful for identifying
-    combinations that suppress or exacerbate outbreaks.
+    the peak force of infection λ(t).
     """
     os.makedirs('../Figures', exist_ok=True)
 
     M_c = [float(x) for x in args.m_c]
     M_r = [float(x) for x in args.m_r]
-    peak_u = np.zeros((len(M_c), len(M_r)))   # untreated peak (Indh+Indl)
-    peak_tot = np.zeros_like(peak_u)          # total infectious peak (Indh+Idh+Indl+Idl)
-    peak_foi = np.zeros_like(peak_u)          # peak λ(t)
+    peak_foi = np.zeros((len(M_c), len(M_r)))  # peak λ(t)
 
     for i, mc in enumerate(M_c):
         for j, mr in enumerate(M_r):
             _, sim = run_sim(mc, mr, days=args.days)
             lam, _, _ = foi_series(sim, mc, mr)
-            peak_u[i, j]   = float(np.max(sim['Indh'] + sim['Indl']))
-            peak_tot[i, j] = float(np.max(sim['Indh'] + sim['Idh'] + sim['Indl'] + sim['Idl']))
             peak_foi[i, j] = float(np.max(lam))
 
-    # 3-panel heatmap
-    fig, axes = plt.subplots(1, 3, figsize=(18,6), constrained_layout=True)
-    metrics = [
-        ('Peak untreated infectious (Indh+Indl)', peak_u, '../Figures/drug_v3_sweep_heatmap_untreated.png'),
-        ('Peak total infectious (Ind+Id)',        peak_tot, '../Figures/drug_v3_sweep_heatmap_total.png'),
-        ('Peak force of infection λ(t)',          peak_foi, '../Figures/drug_v3_sweep_heatmap_foi.png'),
-    ]
-    for ax, (title, Z, path) in zip(axes, metrics):
-        im = ax.imshow(Z, origin='lower', aspect='auto',
-                       extent=[min(M_r), max(M_r), min(M_c), max(M_c)], cmap='viridis')
-        ax.set_title(title)
-        ax.set_xlabel('drug_transmission_multiplier (m_r)')
-        ax.set_ylabel('drug_contact_multiplier (m_c)')
-        fig.colorbar(im, ax=ax)
+    # Single heatmap
+    fig, ax = plt.subplots(1, 1, figsize=(7, 6), constrained_layout=True)
+    im = ax.imshow(
+        peak_foi,
+        origin='lower',
+        aspect='auto',
+        extent=[min(M_r), max(M_r), min(M_c), max(M_c)],
+        cmap='viridis'
+    )
+    ax.set_title('Peak force of infection λ(t)')
+    ax.set_xlabel('drug_transmission_multiplier (m_r)')
+    ax.set_ylabel('drug_contact_multiplier (m_c)')
+    fig.colorbar(im, ax=ax, label='peak λ')
 
-    out = '../Figures/drug_v3_sweep_heatmaps.png'
-    plt.savefig(out, dpi=600); plt.close()
+    out = '../Figures/drug_v3_sweep_heatmap_foi.png'
+    plt.savefig(out, dpi=600)
+    plt.close()
     print(f"Saved: {out}")
 
 
@@ -276,11 +271,11 @@ def main(argv: Optional[List[str]] = None) -> None:
 
     Subcommands:
       - run   : baseline vs params.py drug scenario
-      - sweep : grid sweep over m_c and m_r with peak heatmap
+      - sweep : grid sweep over m_c and m_r with peak λ heatmap
 
     Examples:
       main(['run', '--days', '200'])
-      main(['sweep', '--m-c', '0.8', '1.0', '1.2', '--m-r', '0.3', '0.5', '0.8', '--days', '200'])
+      main(['sweep', '--days', '200'])
     """
     parser = argparse.ArgumentParser(description='Drug exploration with Model v3')
     sub = parser.add_subparsers(dest='cmd', required=True)
@@ -289,10 +284,13 @@ def main(argv: Optional[List[str]] = None) -> None:
     p_run.add_argument('--days', type=int, default=200, help='Simulation horizon in days')
     p_run.set_defaults(func=cmd_run)
 
-    p_sweep = sub.add_parser('sweep', help='Sweep drug multipliers and plot heatmap')
-    p_sweep.add_argument('--m-c', nargs='+', default=['0.8','1.0','1.2'],
+    p_sweep = sub.add_parser('sweep', help='Sweep drug multipliers and plot peak λ heatmap')
+    # Wider default grids
+    p_sweep.add_argument('--m-c', nargs='+',
+                         default=['0.6','0.8','1.0','1.2','1.4','1.6'],
                          help='Values for drug_contact_multiplier (treated contacts)')
-    p_sweep.add_argument('--m-r', nargs='+', default=['0.3','0.5','0.8'],
+    p_sweep.add_argument('--m-r', nargs='+',
+                         default=['0.2','0.4','0.6','0.8','1.0'],
                          help='Values for drug_transmission_multiplier (treated per-contact transmission)')
     p_sweep.add_argument('--days', type=int, default=200, help='Simulation horizon in days')
     p_sweep.set_defaults(func=cmd_sweep)
