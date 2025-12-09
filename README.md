@@ -25,13 +25,15 @@ Drug_symptom_modelling/
 ```
 
 Notes:
+
 - Scripts are intended to be run from the repository root.
 - Plots are saved under Figures/.
 
 ## Scripts overview
 
 ### Scripts/Drug_exploration.py
-- Purpose: 
+
+- Purpose:
   - run: compare baseline (m_c=1, m_r=1) vs. a drug scenario from Models/params.py and save time series.
   - sweep: sweep drug multipliers and plot a single heatmap of the peak force of infection λ(t).
 - Outputs:
@@ -39,6 +41,7 @@ Notes:
   - Figures/drug_v3_sweep_heatmap_foi.png
   - Tables/drug_v3_summary.csv
 - Run:
+
 ```bash
 # Baseline vs params drug
 python Scripts/Drug_exploration.py run --days 200
@@ -46,11 +49,13 @@ python Scripts/Drug_exploration.py run --days 200
 # Grid sweep → heatmap of peak λ(t)
 python Scripts/Drug_exploration.py sweep --days 200
 ```
+
 - Default sweep ranges (can be overridden on CLI):
   - drug_contact_multiplier (m_c): 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0
   - drug_transmission_multiplier (m_r): 0.10, 0.25, 0.50, 0.75, 1.00, 1.20
 
 Example overrides:
+
 ```bash
 python Scripts/Drug_exploration.py sweep \
   --m-c 0.6 0.9 1.2 1.5 1.8 \
@@ -58,6 +63,7 @@ python Scripts/Drug_exploration.py sweep \
 ```
 
 ### Scripts/Drug_three_drugs.py
+
 - Purpose: Compare baseline and three drug scenarios using Model v3.
 - Scenarios:
   - Drug A: contact↑, transmission↓ (m_c > 1, m_r < 1)
@@ -65,12 +71,14 @@ python Scripts/Drug_exploration.py sweep \
   - Drug C: contact=, transmission↓ (m_c = 1, m_r < 1)
 - Output: Figures/drug_v3_force_of_infection.png
 - Run:
+
 ```bash
 python Scripts/Drug_three_drugs.py --days 200
 python Scripts/Drug_three_drugs.py --mc-inc 1.3 --mr-dec 0.7 --mc-inc-same-r 1.4 --mr-dec-only 0.6
 ```
 
 ### Scripts/Drug_three_panels.py
+
 - Purpose: One figure with three subplots (one per drug) sweeping multipliers.
 - Panels:
   - A: contact↑ and transmission↓ (vary m_c and m_r lists)
@@ -78,6 +86,7 @@ python Scripts/Drug_three_drugs.py --mc-inc 1.3 --mr-dec 0.7 --mc-inc-same-r 1.4
   - C: contact=, transmission↓ (fix m_c=1, vary m_r list)
 - Output: Figures/drug_v3_three_panels.png
 - Run:
+
 ```bash
 python Scripts/Drug_three_panels.py --days 200 \
   --A-mc 1.0,1.2,1.4 --A-mr 0.6,0.8 \
@@ -102,6 +111,7 @@ pip install -r requirements.txt
 ```
 
 Quick check:
+
 ```bash
 python - <<'PY'
 import numpy, scipy, pandas, matplotlib, seaborn
@@ -110,6 +120,7 @@ PY
 ```
 
 List saved figures:
+
 ```bash
 ls -1 Figures | sed -n '1,50p'
 ```
