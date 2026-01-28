@@ -7,6 +7,8 @@ import sys
 import numpy as np
 import pandas as pd
 from scipy.integrate import odeint
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 from Models.SEIRS_Models import SEIRS_model_v4
@@ -54,24 +56,59 @@ t_max = getattr(model_params, "t_max", 365)
 t_steps = int(getattr(model_params, "t_steps", 365))
 t = np.linspace(0, t_max, t_steps)
 
-#%% Solve ODEs (SEIRS_model_v4 returns 5 state variables)
-solution = odeint(SEIRS_model_v4, pop_values, t, args=(parameters,))
-columns = ['Susceptible', 'Exposed', 'Infected_NotDrug', 'Infected_Drug', 'Recovered']
-results = pd.DataFrame(solution, columns=columns)
-Sdt, Eldt, Indldt, Idldt, Rldt = solution.T
+#%% Helper to run model and compute metrics
+def run_model(params_tuple, t_grid, init_values):
+    sol = odeint(SEIRS_model_v4, init_values, t_grid, args=(params_tuple,))
+    Sdt, Eldt, Indldt, Idldt, Rldt = sol.T
+    total_inf = Indldt + Idldt
+    metrics = {
+        'peak_infectious': float(np.max(total_inf)),
+        'time_of_peak': float(t_grid[int(np.argmax(total_inf))]),
+        'final_susceptible': float(Sdt[-1]),
+        'attack_rate': float(1.0 - Sdt[-1])
+    }
+    return sol, metrics
 
-#%% Plot time dynamics
+#%% Build scenario parameters
+# Baseline (no drug): set theta=0 and drug multipliers to 1.0
+baseline_params = list(parameters)
+baseline_params[3] = 1.0  # m_c_drug
+baseline_params[4] = 1.0  # m_r_drug
+baseline_params[11] = 0.0 # theta
+baseline_params = tuple(baseline_params)
+
+# Drug scenario: use provided parameters as-is
+drug_params = parameters
+
+#%% Run both scenarios
+solution_base, metrics_base = run_model(baseline_params, t, pop_values)
+solution_drug, metrics_drug = run_model(drug_params, t, pop_values)
+
+# Extract series for plotting
+S_base, E_base, Ind_base, Id_base, R_base = solution_base.T
+S_drug, E_drug, Ind_drug, Id_drug, R_drug = solution_drug.T
+total_inf_base = Ind_base + Id_base
+total_inf_drug = Ind_drug + Id_drug
+
+#%% Plot comparison dynamics
 fig = plt.figure(figsize=(12, 8), facecolor='white')
 ax = fig.add_subplot(111, facecolor='#f4f4f4', axisbelow=True)
 
-# plot exposed and total infectious (treated + untreated)
-ax.plot(t, Eldt, 'c', lw=2, label='Exposed')
-total_infectious = Indldt + Idldt
-ax.plot(t, total_infectious, 'r', lw=2, label='Total Infectious (NotDrug + Drug)')
+ax.plot(t, E_base, 'c', lw=2, label='Exposed (No Drug)')
+ax.plot(t, total_inf_base, 'r', lw=2, label='Total Infectious (No Drug)')
+ax.plot(t, E_drug, 'c--', lw=2, label='Exposed (Drug)')
+ax.plot(t, total_inf_drug, 'r--', lw=2, label='Total Infectious (Drug)')
 
 ax.set_xlabel('Time (days)')
 ax.set_ylabel('Proportion of Population')
 ax.legend(framealpha=0.7)
 plt.tight_layout()
-plt.savefig('./Figures/first_draft_model_dynamics_v4.png', dpi=600)
-plt.show()
+plt.savefig('./Figures/singlestrain_v4_drug_comparison.png', dpi=300)
+
+#%% Print summary metrics
+print('=== Baseline (No Drug) ===')
+print(f"Peak infectious proportion: {metrics_base['peak_infectious']:.6f} at day {metrics_base['time_of_peak']:.2f}")
+print(f"Final susceptible proportion: {metrics_base['final_susceptible']:.6f} (attack rate {metrics_base['attack_rate']:.6f})")
+print('=== Drug Scenario ===')
+print(f"Peak infectious proportion: {metrics_drug['peak_infectious']:.6f} at day {metrics_drug['time_of_peak']:.2f}")
+print(f"Final susceptible proportion: {metrics_drug['final_susceptible']:.6f} (attack rate {metrics_drug['attack_rate']:.6f})")
