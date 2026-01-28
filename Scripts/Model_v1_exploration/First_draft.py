@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from scipy.integrate import odeint
 import matplotlib.pyplot as plt
-from Models.SEIRS_Models import SEIRS_first_model
+from Models.SEIRS_Models import SEIRS_model_v1
 from Models import params as model_params  # load shared defaults and initial conditions
 
 np.random.seed(42)
@@ -46,7 +46,7 @@ t_steps = int(getattr(model_params, "t_steps", 365))
 t = np.linspace(0, t_max, t_steps)
 
 #%% Solve ODEs
-solution = odeint(SEIRS_first_model, pop_values, t, args=(parameters,))
+solution = odeint(SEIRS_model_v1, pop_values, t, args=(parameters,))
 columns = ['Susceptible', 'Exposed_High', 'Infected_NotDrug_High', 'Infected_Drug_High', 'Recovered_High',
            'Exposed_Low', 'Infected_NotDrug_Low', 'Infected_Drug_Low', 'Recovered_Low']
 results = pd.DataFrame(solution, columns=columns)

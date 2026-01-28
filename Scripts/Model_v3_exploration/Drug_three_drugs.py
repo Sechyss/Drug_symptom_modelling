@@ -21,7 +21,7 @@ from scipy.integrate import odeint
 from typing import Dict, Tuple, List, Optional
 
 # Import model v3 and params
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from Models.SEIRS_Models import SEIRS_model_v3
 from Models import params as P
 
@@ -104,7 +104,7 @@ def run_three_drugs(days: int,
 
     This version only plots and saves the force of infection λ(t).
     """
-    os.makedirs('../Figures', exist_ok=True)
+    os.makedirs('../../Figures', exist_ok=True)
 
     scenarios = [
         ('baseline', 1.0, 1.0),
@@ -131,7 +131,7 @@ def run_three_drugs(days: int,
     ax.legend(fontsize=8)
 
     plt.tight_layout()
-    fig_path = '../Figures/drug_v3_force_of_infection.png'
+    fig_path = '../../Figures/Model_v3_exploration/drug_v3_force_of_infection.png'
     plt.savefig(fig_path, dpi=600)
     plt.close()
     print(f"Saved: {fig_path}")

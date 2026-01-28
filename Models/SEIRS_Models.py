@@ -228,3 +228,73 @@ def SEIRS_model_v3(y, t, params):
     dRldt = sigma_l * (Indl + Idl) - delta * Rl - death_rate * Rl
 
     return np.array([dSdt, dEhdt, dIndhdt, dIdhdt, dRhdt, dEldt, dIndldt, dIdldt, dRldt])
+
+
+def SEIRS_model_v4(y, t, params):
+    """
+    SEIRS model variant simplified to a single strain with drug-modified behavior.
+
+    Params (14):
+      (contact_rate, transmission_probability, phi_transmission,
+       drug_contact_multiplier, drug_transmission_multiplier,
+       birth_rate, death_rate, delta, kappa_base, kappa_scale,
+       phi_recover, sigma, tau, theta)
+
+    Notes:
+    - Single strain (low-virulence naming kept for compatibility).
+    - Split at symptom onset (no Ind -> Id lag).
+    - Drug affects treated infectious classes only:
+        c_treated = drug_contact_multiplier * contact_rate
+        r_treated = drug_transmission_multiplier * transmission_probability
+      so β_treated = c_treated * r_treated.
+    - kappa_scale and phi_transmission are used to set an effective detection
+      scaling for this single strain (consistent with v2/v3 logic).
+    """
+    import numpy as np
+
+    y = np.maximum(np.asarray(y, dtype=float), 0.0)
+    S, El, Indl, Idl, Rl = y
+
+    if not hasattr(params, "__len__") or len(params) != 14:
+        raise ValueError(
+            "SEIRS_model_v4 expects 14 params: "
+            "(contact_rate, transmission_probability, phi_transmission, "
+            "drug_contact_multiplier, drug_transmission_multiplier, "
+            "birth_rate, death_rate, delta, kappa_base, kappa_scale, "
+            "phi_recover, sigma, tau, theta)"
+        )
+
+    (c_low, r_low, phi_t,
+     m_c_drug, m_r_drug,
+     birth_rate, death_rate, delta, kappa_base, kappa_scale,
+     phi_recover, sigma, tau, theta) = params
+
+    # Betas for untreated vs treated (drug-modified)
+    beta_l_u = c_low * r_low
+    beta_l_t = (c_low * m_c_drug) * (r_low * m_r_drug)
+
+    # Detection scaling (single strain): allow kappa_scale to adjust detection
+    # based on phi_transmission so parameter meanings remain consistent.
+    kappa_low = kappa_base * (1.0 + kappa_scale * (phi_t - 1.0))
+    if theta > 0:
+        kappa_low = min(kappa_low, 1.0 / theta)
+
+    theta_low = kappa_low * theta
+
+    # Force of infection (treated use drug-modified beta)
+    B_l = beta_l_u * Indl + beta_l_t * Idl
+
+    # ODEs
+    dSdt = birth_rate - B_l * S + delta * Rl - death_rate * S
+    dEldt = B_l * S - tau * El - death_rate * El
+
+    # Split at onset; same recovery speeds for treated/untreated within strain
+    sigma_l = sigma
+
+    dIndldt = (1.0 - theta_low) * tau * El - sigma_l * Indl - death_rate * Indl
+    dIdldt = theta_low * tau * El - sigma_l * Idl - death_rate * Idl
+
+    dRldt = sigma_l * (Indl + Idl) - delta * Rl - death_rate * Rl
+
+    return np.array([dSdt, dEldt, dIndldt, dIdldt, dRldt])
+

@@ -17,7 +17,7 @@ from scipy.integrate import odeint
 from typing import Dict, Tuple, List, Optional
 
 # Import model v3 and params
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from Models.SEIRS_Models import SEIRS_model_v3
 from Models import params as P
 
@@ -110,7 +110,7 @@ def run_three_panels(days: int,
       Panel B: Contact↑ Transmission= (vary m_c list, fix m_r=1)
       Panel C: Contact= Transmission↓ (fix m_c=1, vary m_r list)
     """
-    os.makedirs('../Figures', exist_ok=True)
+    os.makedirs('../../Figures', exist_ok=True)
 
     fig, axes = plt.subplots(1, 3, figsize=(18, 5), sharey=True)
 

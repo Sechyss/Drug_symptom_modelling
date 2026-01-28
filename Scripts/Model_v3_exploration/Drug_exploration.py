@@ -33,7 +33,7 @@ from scipy.integrate import odeint
 from typing import Dict, Tuple, List, Optional
 
 # Import model definitions and parameter defaults
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from Models.SEIRS_Models import SEIRS_model_v3
 from Models import params as P
 
@@ -173,8 +173,8 @@ def cmd_run(args: argparse.Namespace) -> None:
       1) Baseline (no drug effect on treated: m_c=1, m_r=1).
       2) Drug scenario using params.py: drug_contact_multiplier, drug_transmission_multiplier.
     """
-    os.makedirs('../Figures', exist_ok=True)
-    os.makedirs('../Tables', exist_ok=True)
+    os.makedirs('../../Figures', exist_ok=True)
+    os.makedirs('../../Tables', exist_ok=True)
 
     # Baseline (treated behave like untreated)
     t0, sim0 = run_sim(m_c=1.0, m_r=1.0, days=args.days)
@@ -233,7 +233,7 @@ def cmd_sweep(args: argparse.Namespace) -> None:
     Sweep drug multipliers over grids of m_c and m_r and plot a heatmap of
     the peak force of infection λ(t).
     """
-    os.makedirs('../Figures', exist_ok=True)
+    os.makedirs('../../Figures', exist_ok=True)
 
     M_c = [float(x) for x in args.m_c]
     M_r = [float(x) for x in args.m_r]
