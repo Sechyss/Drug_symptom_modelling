@@ -234,11 +234,11 @@ def SEIRS_model_v4(y, t, params):
     """
     SEIRS model variant simplified to a single strain with drug-modified behavior.
 
-    Params (14):
+        Params (12):
       (contact_rate, transmission_probability, phi_transmission,
        drug_contact_multiplier, drug_transmission_multiplier,
-       birth_rate, death_rate, delta, kappa_base, kappa_scale,
-       phi_recover, sigma, tau, theta)
+             birth_rate, death_rate, kappa_base, kappa_scale,
+             sigma, tau, theta)
 
     Notes:
     - Single strain (low-virulence naming kept for compatibility).
@@ -255,19 +255,18 @@ def SEIRS_model_v4(y, t, params):
     y = np.maximum(np.asarray(y, dtype=float), 0.0)
     S, El, Indl, Idl, Rl = y
 
-    if not hasattr(params, "__len__") or len(params) != 14:
+    if not hasattr(params, "__len__") or len(params) != 12:
         raise ValueError(
-            "SEIRS_model_v4 expects 14 params: "
+            "SEIRS_model_v4 expects 12 params: "
             "(contact_rate, transmission_probability, phi_transmission, "
             "drug_contact_multiplier, drug_transmission_multiplier, "
-            "birth_rate, death_rate, delta, kappa_base, kappa_scale, "
-            "phi_recover, sigma, tau, theta)"
+            "birth_rate, death_rate, kappa_base, kappa_scale, "
+            "sigma, tau, theta)"
         )
 
     (c_low, r_low, phi_t,
      m_c_drug, m_r_drug,
-     birth_rate, death_rate, delta, kappa_base, kappa_scale,
-     phi_recover, sigma, tau, theta) = params
+     birth_rate, death_rate, kappa_base, kappa_scale, sigma, tau, theta) = params
 
     # Betas for untreated vs treated (drug-modified)
     beta_l_u = c_low * r_low
@@ -285,7 +284,7 @@ def SEIRS_model_v4(y, t, params):
     B_l = beta_l_u * Indl + beta_l_t * Idl
 
     # ODEs
-    dSdt = birth_rate - B_l * S + delta * Rl - death_rate * S
+    dSdt = birth_rate - B_l * S - death_rate * S
     dEldt = B_l * S - tau * El - death_rate * El
 
     # Split at onset; same recovery speeds for treated/untreated within strain
@@ -294,7 +293,7 @@ def SEIRS_model_v4(y, t, params):
     dIndldt = (1.0 - theta_low) * tau * El - sigma_l * Indl - death_rate * Indl
     dIdldt = theta_low * tau * El - sigma_l * Idl - death_rate * Idl
 
-    dRldt = sigma_l * (Indl + Idl) - delta * Rl - death_rate * Rl
+    dRldt = sigma_l * (Indl + Idl) - death_rate * Rl
 
     return np.array([dSdt, dEldt, dIndldt, dIdldt, dRldt])
 

@@ -2,10 +2,13 @@
 # Updated `Scripts/Simple_SEIRS_model_singlestrain.py` to match SEIRS_model_v4 (single strain)
 
 #%% Imports
+import os
+import sys
 import numpy as np
 import pandas as pd
 from scipy.integrate import odeint
 import matplotlib.pyplot as plt
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 from Models.SEIRS_Models import SEIRS_model_v4
 from Models import params as model_params  # load shared defaults and initial conditions
 
@@ -21,7 +24,7 @@ Rl = getattr(model_params, "Rl", 0)
 pop_values = np.array([S, El, Indl, Idl, Rl], dtype=float)
 pop_values = pop_values / pop_values.sum()  # Normalize to proportions
 
-#%% Parameters (match SEIRS_model_v4 signature: 14 params)
+#%% Parameters (match SEIRS_model_v4 signature: 12 params)
 contact_rate = getattr(model_params, "contact_rate", 10.0)
 transmission_probability = getattr(model_params, "transmission_probability_low",
                                    getattr(model_params, "transmission_probability", 0.025))
@@ -30,10 +33,8 @@ m_c_drug = getattr(model_params, "drug_contact_multiplier", 1.0)
 m_r_drug = getattr(model_params, "drug_transmission_multiplier", 1.0)
 birth_rate = getattr(model_params, "birth_rate", 0.0)
 death_rate = getattr(model_params, "death_rate", 0.0)
-delta = getattr(model_params, "delta", 1/120)
 kappa_base = getattr(model_params, "kappa_base", 1.0)
 kappa_scale = getattr(model_params, "kappa_scale", 1.0)
-phi_recover = getattr(model_params, "phi_recover", 1.0)
 sigma = getattr(model_params, "sigma", 1/5)
 tau = getattr(model_params, "tau", 1/3)
 theta = getattr(model_params, "theta", 0.3)
@@ -41,12 +42,12 @@ theta = getattr(model_params, "theta", 0.3)
 # pack parameters in the order SEIRS_model_v4 expects:
 # (contact_rate, transmission_probability, phi_transmission,
 #  drug_contact_multiplier, drug_transmission_multiplier,
-#  birth_rate, death_rate, delta, kappa_base, kappa_scale,
-#  phi_recover, sigma, tau, theta)
+#  birth_rate, death_rate, kappa_base, kappa_scale,
+#  sigma, tau, theta)
 parameters = (contact_rate, transmission_probability, phi_transmission,
               m_c_drug, m_r_drug,
-              birth_rate, death_rate, delta, kappa_base, kappa_scale,
-              phi_recover, sigma, tau, theta)
+              birth_rate, death_rate, kappa_base, kappa_scale,
+              sigma, tau, theta)
 
 # Time vector: use shared time grid from params if present, otherwise default to one year daily
 t_max = getattr(model_params, "t_max", 365)
