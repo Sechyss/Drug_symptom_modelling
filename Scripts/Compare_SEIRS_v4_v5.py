@@ -193,6 +193,6 @@ ax2.grid(alpha=0.2)
 
 plt.tight_layout()
 out_path = os.path.join(os.path.dirname(__file__), '../Figures/combined_v4_v5_comparison.png')
-plt.savefig(out_path, dpi=300)
+plt.savefig(out_path, dpi=600)
 
 print(f"Saved combined figure to {os.path.realpath(out_path)}")
