@@ -2,7 +2,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from matplotlib.ticker import FormatStrFormatter, MaxNLocator, AutoMinorLocator, LogLocator, ScalarFormatter
+from matplotlib.ticker import FormatStrFormatter, MaxNLocator, AutoMinorLocator, LogLocator, ScalarFormatter, LogFormatterMathtext
 
 # Scientific styling
 sns.set_theme(style="whitegrid", context="paper", palette="colorblind")
@@ -93,8 +93,12 @@ def main():
     ax.set_ylabel('c_high (contacts/day, log scale)')
     ax.xaxis.set_major_locator(LogLocator(base=10, numticks=6))
     ax.yaxis.set_major_locator(LogLocator(base=10, numticks=6))
-    ax.xaxis.set_minor_locator(AutoMinorLocator())
-    ax.yaxis.set_minor_locator(AutoMinorLocator())
+    # Replace AutoMinorLocator with LogLocator for minor ticks on log axes
+    ax.xaxis.set_minor_locator(LogLocator(base=10, subs=np.arange(2, 10) * 0.1, numticks=12))
+    ax.yaxis.set_minor_locator(LogLocator(base=10, subs=np.arange(2, 10) * 0.1, numticks=12))
+    # Log tick labels in 10^n format
+    ax.xaxis.set_major_formatter(LogFormatterMathtext())
+    ax.yaxis.set_major_formatter(LogFormatterMathtext())
     ax.grid(True, which='major', axis='both')
     ax.grid(True, which='minor', axis='both', alpha=0.12)
     ax.legend(frameon=True, loc='best')
@@ -109,8 +113,11 @@ def main():
     ax_err.set_ylabel('ΔR0 (%)')
     ax_err.yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
     ax_err.xaxis.set_major_locator(LogLocator(base=10, numticks=6))
-    ax_err.xaxis.set_minor_locator(AutoMinorLocator())
+    # Minor ticks for log x-axis
+    ax_err.xaxis.set_minor_locator(LogLocator(base=10, subs=np.arange(2, 10) * 0.1, numticks=12))
+    # Keep AutoMinorLocator for linear y-axis
     ax_err.yaxis.set_minor_locator(AutoMinorLocator())
+    ax_err.xaxis.set_major_formatter(LogFormatterMathtext())
     ax_err.grid(True, axis='y', which='major')
     ax_err.grid(True, axis='y', which='minor', alpha=0.15)
     ax_err.tick_params(direction='in', top=True, right=True, length=4)
