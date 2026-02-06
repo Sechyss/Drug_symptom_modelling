@@ -1,9 +1,9 @@
 """
-Sweep drug contact and transmission multipliers, simulate SEIRS_model_v4
-(single-strain from Models/SEIRS_Models.py), and plot three heatmaps:
-- Peak infected proportion
+Sweep drug contact and transmission multipliers, simulate SEIRS_model_v5
+(two strains from Models/SEIRS_Models.py), and plot three heatmaps:
+- Peak infected proportion (Indh+Idh+Indl+Idl)
 - Epidemic size (1 - S_end / N0)
-- Effective R0 (computed across the (m_c, m_r) grid)
+- Effective R0 (dominant eigenvalue at DFE; max of strain R0s)
 
 Optional overlays: R0_eff contour lines and three drug scenario paths.
 """
@@ -23,22 +23,26 @@ if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
 # Model + parameters
-from Models.SEIRS_Models import SEIRS_model_v4
+from Models.SEIRS_Models import SEIRS_model_v5
 from Models import params as P
 
 # Time grid
 t = np.linspace(0.0, float(P.t_max), int(P.t_steps))
 
-# Initial conditions (single-strain v4): [S, El, Indl, Idl, Rl]
+# Initial conditions (two-strain v5): [S, Eh, Indh, Idh, Rh, El, Indl, Idl, Rl]
 S0 = float(P.S)
+Eh0 = float(P.Eh)
+Indh0 = float(P.Indh)
+Idh0 = float(P.Idh)
+Rh0 = float(P.Rh)
 El0 = float(P.El)
 Indl0 = float(P.Indl)
 Idl0 = float(P.Idl)
 Rl0 = float(P.Rl)
-y0 = [S0, El0, Indl0, Idl0, Rl0]
-N0 = S0 + El0 + Indl0 + Idl0 + Rl0
+y0 = [S0, Eh0, Indh0, Idh0, Rh0, El0, Indl0, Idl0, Rl0]
+N0 = S0 + Eh0 + Indh0 + Idh0 + Rh0 + El0 + Indl0 + Idl0 + Rl0
 if N0 <= 0:
-    raise ValueError("Initial population (single-strain compartments) must be positive.")
+    raise ValueError("Initial population (two-strain compartments) must be positive.")
 
 # Sweep ranges
 m_c_vals = np.linspace(0.2, 2.0, 60)
@@ -58,46 +62,69 @@ def drug3_path(m_c_arr, k, m_r_min, m_r_max):
 
 
 def get_param_vec(m_c, m_r):
+    """Parameter vector for v5 (two strains)."""
     return (
-        P.contact_rate,
-        P.transmission_probability,
-        P.phi_transmission,
-        m_c,
-        m_r,
+        P.contact_rate,                # contact_rate_low
+        P.transmission_probability,    # transmission_probability_low
+        P.contact_rate_high,           # contact_rate_high
+        P.phi_transmission,            # phi_transmission
+        m_c,                           # drug_contact_multiplier
+        m_r,                           # drug_transmission_multiplier
         P.birth_rate,
         P.death_rate,
         P.kappa_base,
         P.kappa_scale,
+        P.phi_recover,
         P.sigma,
         P.tau,
         P.theta,
     )
 
 
-def theta_low_effective():
-    """Effective treated/detected fraction at onset from v4 detection logic."""
-    phi_t = P.phi_transmission
-    kappa_base = P.kappa_base
-    kappa_scale = P.kappa_scale
-    theta = P.theta
+def theta_fractions():
+    """Effective treated/detected fractions at onset for high vs low (v5 logic)."""
+    phi_t = float(P.phi_transmission)
+    kappa_base = float(P.kappa_base)
+    kappa_scale = float(P.kappa_scale)
+    theta = float(P.theta)
 
-    kappa_low = kappa_base * (1.0 + kappa_scale * (phi_t - 1.0))
+    kappa_high = kappa_base * (1.0 + kappa_scale * (phi_t - 1.0))
+    kappa_low = kappa_base
     if theta > 0:
+        kappa_high = min(kappa_high, 1.0 / theta)
         kappa_low = min(kappa_low, 1.0 / theta)
-    return kappa_low * theta
+    return kappa_high * theta, kappa_low * theta
 
 
-def R0_eff_grid(m_c_arr, m_r_arr):
+def R0_eff_grid_v5(m_c_arr, m_r_arr):
     """
-    R0_eff ≈ (S0/N0) * [ (1-θL) * (c*r) + θL * (c*r) * (m_c*m_r) ] / σ
+    Effective R0 at DFE for two-strain v5.
+
+    For each strain s ∈ {high, low}:
+      R0_s = (S0/N0) * [ (1 - θ_s) * β_s_untreated / σ_s + θ_s * β_s_treated / σ_s ]
+
+    Overall R0_eff = max(R0_high, R0_low) (dominant eigenvalue of diagonal NGM).
     """
-    thetaL = float(theta_low_effective())
-    c = float(P.contact_rate)
-    r = float(P.transmission_probability)
-    sigma = float(P.sigma)
+    theta_high, theta_low = theta_fractions()
+    c_low = float(P.contact_rate)
+    r_low = float(P.transmission_probability)
+    c_high = float(P.contact_rate_high)
+    phi_t = float(P.phi_transmission)
+    sigma_h = float(P.phi_recover) * float(P.sigma)
+    sigma_l = float(P.sigma)
     s_over_n = S0 / N0
-    beta = c * r
-    return (s_over_n * ((1.0 - thetaL) * beta + thetaL * beta * (m_c_arr * m_r_arr)) / sigma)
+
+    # Betas depend on grid (drug modifies treated only)
+    beta_l_u = c_low * r_low
+    beta_l_t = (c_low * m_c_arr) * (r_low * m_r_arr)
+
+    beta_h_u = c_high * r_low * phi_t
+    beta_h_t = (c_high * m_c_arr) * (r_low * m_r_arr) * phi_t
+
+    R0_l = s_over_n * (((1.0 - theta_low) * beta_l_u + theta_low * beta_l_t) / sigma_l)
+    R0_h = s_over_n * (((1.0 - theta_high) * beta_h_u + theta_high * beta_h_t) / sigma_h)
+
+    return np.maximum(R0_l, R0_h)
 
 
 def add_R0_contours(ax, MC, MR, R0_grid, levels):
@@ -117,16 +144,16 @@ def add_R0_contours(ax, MC, MR, R0_grid, levels):
 
 # Precompute R0 across grid
 MC, MR = np.meshgrid(m_c_vals, m_r_vals)
-R0_grid = R0_eff_grid(MC, MR)
+R0_grid = R0_eff_grid_v5(MC, MR)
 
 # Simulations
 for i_r, m_r in enumerate(m_r_vals):
     for i_c, m_c in enumerate(m_c_vals):
-        sol = odeint(SEIRS_model_v4, y0, t, args=(get_param_vec(m_c, m_r),))
-        S, El, Indl, Idl, Rl = sol.T
-        I = Indl + Idl
-        peak_I[i_r, i_c] = I.max() / N0
-        epi_size[i_r, i_c] = 1.0 - S[-1] / N0  # epidemic size vs baseline
+        sol = odeint(SEIRS_model_v5, y0, t, args=(get_param_vec(m_c, m_r),))
+        S, Eh, Indh, Idh, Rh, El, Indl, Idl, Rl = sol.T
+        I_tot = Indh + Idh + Indl + Idl
+        peak_I[i_r, i_c] = I_tot.max() / N0
+        epi_size[i_r, i_c] = 1.0 - S[-1] / N0
 
 # ---------------------------------------------------------------------------
 
@@ -143,7 +170,7 @@ im0 = axes[0].imshow(
 )
 axes[0].set_xlabel(r"Drug contact multiplier $m_c$")
 axes[0].set_ylabel(r"Drug transmission multiplier $m_r$")
-axes[0].set_title("Peak infected proportion")
+axes[0].set_title("Peak infected proportion (two strains)")
 cbar0 = fig.colorbar(im0, ax=axes[0])
 fmt0 = ScalarFormatter(useOffset=False)
 fmt0.set_scientific(False)
@@ -179,7 +206,7 @@ im2 = axes[2].imshow(
 )
 axes[2].set_xlabel(r"Drug contact multiplier $m_c$")
 axes[2].set_ylabel(r"Drug transmission multiplier $m_r$")
-axes[2].set_title(r"Effective $R_0$ under drug modifiers")
+axes[2].set_title(r"Effective $R_0$ under drug modifiers (v5)")
 cbar2 = fig.colorbar(im2, ax=axes[2])
 fmt2 = ScalarFormatter(useOffset=False)
 fmt2.set_scientific(False)
@@ -236,6 +263,6 @@ plt.tight_layout()
 
 fig_dir = os.path.join(ROOT_DIR, "Figures")
 os.makedirs(fig_dir, exist_ok=True)
-out_path = os.path.join(fig_dir, "Drug_exploration_singlestrain.png")
+out_path = os.path.join(fig_dir, "Drug_exploration_twostrains_v5.png")
 plt.savefig(out_path, dpi=600)
 plt.show()
