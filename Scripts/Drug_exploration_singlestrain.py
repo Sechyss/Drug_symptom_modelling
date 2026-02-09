@@ -27,6 +27,10 @@ N0 = S0 + El0 + Indl0 + Idl0 + Rl0
 if N0 <= 0:
     raise ValueError("Initial total population must be positive.")
 
+# Normalize to proportions (script-only change)
+y0 = [v / N0 for v in y0]
+N0 = 1.0
+
 # Sweep ranges for drug modifiers
 m_c_vals = np.linspace(0.5, 2.0, 50)  # contact multiplier
 m_r_vals = np.linspace(0.5, 2.0, 50)  # transmission multiplier
@@ -62,6 +66,19 @@ for i_r, m_r in enumerate(m_r_vals):
         peak_I[i_r, i_c] = np.max(I) / N0
         S_end[i_r, i_c]  = S[-1] / N0
 
+# ---- R0 overlay grid (no mesh) ----
+MC, MR = np.meshgrid(m_c_vals, m_r_vals)
+c = float(P.contact_rate)
+r = float(P.transmission_probability)
+sigma = float(P.sigma)
+theta_low = np.clip(float(P.kappa_base) * float(P.theta), 0.0, 1.0)
+sfrac = float(y0[0])  # S0/N0 after normalization
+
+beta_u = c * r
+beta_t = (c * MC) * (r * MR)
+R0_grid = sfrac * ((1.0 - theta_low) * beta_u + theta_low * beta_t) / sigma
+levels = [0.75, 1.0, 1.25, 2.0]
+
 # Plot
 fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 
@@ -81,6 +98,11 @@ fmt0 = ScalarFormatter(useOffset=False); fmt0.set_scientific(False)
 cbar0.formatter = fmt0; cbar0.update_ticks()
 cbar0.set_label("Peak (I/N0)")
 
+# R0 contours on peak plot
+cs0 = axes[0].contour(MC, MR, R0_grid, levels=levels,
+                      colors="white", linestyles="dashed", linewidths=1)
+axes[0].clabel(cs0, inline=True, fontsize=8, fmt=lambda v: f"R0={v:g}")
+
 # S at end of epidemic
 im1 = axes[1].imshow(
     S_end,
@@ -96,6 +118,11 @@ cbar1 = fig.colorbar(im1, ax=axes[1])
 fmt1 = ScalarFormatter(useOffset=False); fmt1.set_scientific(False)
 cbar1.formatter = fmt1; cbar1.update_ticks()
 cbar1.set_label("S_end/N0")
+
+# R0 contours on S_end plot
+cs1 = axes[1].contour(MC, MR, R0_grid, levels=levels,
+                      colors="white", linestyles="dashed", linewidths=1)
+axes[1].clabel(cs1, inline=True, fontsize=8, fmt=lambda v: f"R0={v:g}")
 
 plt.tight_layout()
 
