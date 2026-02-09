@@ -32,8 +32,8 @@ y0 = [v / N0 for v in y0]
 N0 = 1.0
 
 # Sweep ranges for drug modifiers
-m_c_vals = np.linspace(0.5, 2.0, 50)  # contact multiplier
-m_r_vals = np.linspace(0.5, 2.0, 50)  # transmission multiplier
+m_c_vals = np.linspace(0.0, 2.0, 50)  # contact multiplier
+m_r_vals = np.linspace(0.0, 2.0, 50)  # transmission multiplier
 
 def get_param_vec(m_c_drug, m_r_drug):
     """Build parameter tuple for v4 using base params and current modifiers."""
