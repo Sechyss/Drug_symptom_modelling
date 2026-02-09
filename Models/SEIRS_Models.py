@@ -268,6 +268,7 @@ def SEIRS_model_v4(y, t, params):
      m_c_drug, m_r_drug,
      birth_rate, death_rate, kappa_base, kappa_scale, sigma, tau, theta) = params
 
+    # Demography OFF: ignore birth_rate, death_rate
     # Betas for untreated vs treated (drug-modified)
     beta_l_u = c_low * r_low
     beta_l_t = (c_low * m_c_drug) * (r_low * m_r_drug)
@@ -280,20 +281,16 @@ def SEIRS_model_v4(y, t, params):
 
     theta_low = kappa_low * theta
 
-    # Force of infection (treated use drug-modified beta)
+    # Force of infection
     B_l = beta_l_u * Indl + beta_l_t * Idl
 
-    # ODEs
-    dSdt = birth_rate - B_l * S - death_rate * S
-    dEldt = B_l * S - tau * El - death_rate * El
-
-    # Split at onset; same recovery speeds for treated/untreated within strain
+    # ODEs (no births/deaths, no waning)
+    dSdt    = - B_l * S
+    dEldt   = B_l * S - tau * El
     sigma_l = sigma
-
-    dIndldt = (1.0 - theta_low) * tau * El - sigma_l * Indl - death_rate * Indl
-    dIdldt = theta_low * tau * El - sigma_l * Idl - death_rate * Idl
-
-    dRldt = sigma_l * (Indl + Idl) - death_rate * Rl
+    dIndldt = (1.0 - theta_low) * tau * El - sigma_l * Indl
+    dIdldt  = theta_low * tau * El - sigma_l * Idl
+    dRldt   = sigma_l * (Indl + Idl)
 
     return np.array([dSdt, dEldt, dIndldt, dIdldt, dRldt])
 
@@ -332,10 +329,9 @@ def SEIRS_model_v5(y, t, params):
      m_c_drug, m_r_drug,
      birth_rate, death_rate, kappa_base, kappa_scale, phi_recover, sigma, tau, theta) = params
 
-    # Betas for untreated vs treated (drug-modified) and low vs high
+    # Demography OFF: ignore birth_rate, death_rate
     beta_l_u = c_low * r_low
     beta_l_t = (c_low * m_c_drug) * (r_low * m_r_drug)
-
     beta_h_u = c_high * r_low * phi_t
     beta_h_t = (c_high * m_c_drug) * (r_low * m_r_drug) * phi_t
 
@@ -350,27 +346,24 @@ def SEIRS_model_v5(y, t, params):
     theta_high = kappa_high * theta
     theta_low  = kappa_low  * theta
 
-    # Forces of infection (treated use drug-modified betas)
     B_h = beta_h_u * Indh + beta_h_t * Idh
     B_l = beta_l_u * Indl + beta_l_t * Idl
 
-    # ODEs
-    dSdt   = birth_rate - (B_h + B_l) * S - death_rate * S
-    dEhdt  = B_h * S - tau * Eh - death_rate * Eh
-    dEldt  = B_l * S - tau * El - death_rate * El
+    # ODEs (no births/deaths, no waning)
+    dSdt    = - (B_h + B_l) * S
+    dEhdt   = B_h * S - tau * Eh
+    dEldt   = B_l * S - tau * El
 
-    # Split at onset; same recovery speeds for treated/untreated within strain
     sigma_h = phi_recover * sigma
     sigma_l = sigma
 
-    dIndhdt = (1.0 - theta_high) * tau * Eh - sigma_h * Indh - death_rate * Indh
-    dIdhdt  = theta_high * tau * Eh - sigma_h * Idh  - death_rate * Idh
+    dIndhdt = (1.0 - theta_high) * tau * Eh - sigma_h * Indh
+    dIdhdt  = theta_high * tau * Eh - sigma_h * Idh
+    dIndldt = (1.0 - theta_low)  * tau * El - sigma_l * Indl
+    dIdldt  = theta_low * tau * El - sigma_l * Idl
 
-    dIndldt = (1.0 - theta_low)  * tau * El - sigma_l * Indl - death_rate * Indl
-    dIdldt  = theta_low * tau * El - sigma_l * Idl  - death_rate * Idl
-
-    dRhdt = sigma_h * (Indh + Idh) - death_rate * Rh
-    dRldt = sigma_l * (Indl + Idl) - death_rate * Rl
+    dRhdt   = sigma_h * (Indh + Idh)
+    dRldt   = sigma_l * (Indl + Idl)
 
     return np.array([dSdt, dEhdt, dIndhdt, dIdhdt, dRhdt, dEldt, dIndldt, dIdldt, dRldt])
 
