@@ -72,18 +72,17 @@ S_b, El_b, Indl_b, Idl_b, Rl_b = sol0.T
 I_b = Indl_b + Idl_b
 baseline_peak_I = float(np.max(I_b) / N0)
 baseline_S_end  = float(S_b[-1] / N0)
-baseline_final_size = float(1.0 - baseline_S_end)
 
 # Baseline R0
 R0_baseline = compute_R0(1.0, 1.0)
-print(f"Baseline metrics -> Peak I/N0: {baseline_peak_I:.6f}, Final size: {baseline_final_size:.6f}")
+print(f"Baseline metrics -> Peak I/N0: {baseline_peak_I:.6f}, S_end/N0: {baseline_S_end:.6f}")
 print(f"Baseline R0: {R0_baseline:.3f} {'(>1)' if R0_baseline > 1.0 else '(≤1)'}")
 if R0_baseline <= 1.0:
     print("Warning: Baseline R0 ≤ 1; negative deltas are unlikely because the baseline outbreak is minimal.")
 
 # ---- Grid simulation ----
 peak_I = np.zeros((len(m_r_vals), len(m_c_vals)))
-final_size = np.zeros_like(peak_I)
+S_end_grid = np.zeros_like(peak_I)
 
 for i_r, m_r in enumerate(m_r_vals):
     for i_c, m_c in enumerate(m_c_vals):
@@ -93,23 +92,23 @@ for i_r, m_r in enumerate(m_r_vals):
         I = Indl + Idl
         peak_I[i_r, i_c] = np.max(I) / N0
         S_end = S[-1] / N0
-        final_size[i_r, i_c] = 1.0 - S_end
+        S_end_grid[i_r, i_c] = S_end
 
 # ---- Comparisons to baseline ----
 # Differences (delta) and ratios; handle potential zero baselines
 eps = 1e-12
 delta_peak = peak_I - baseline_peak_I
-delta_final = final_size - baseline_final_size
+delta_S_end = S_end_grid - baseline_S_end
 ratio_peak = peak_I / max(baseline_peak_I, eps)
-ratio_final = final_size / max(baseline_final_size, eps)
+ratio_S_end = S_end_grid / max(baseline_S_end, eps)
 
 # After computing delta_peak/delta_final:
 min_dp = float(np.min(delta_peak))
-min_df = float(np.min(delta_final))
+min_dS = float(np.min(delta_S_end))
 ir_min, ic_min = np.unravel_index(np.argmin(delta_peak), delta_peak.shape)
 mc_min = m_c_vals[ic_min]; mr_min = m_r_vals[ir_min]
 print(f"Min Δpeak={min_dp:.6e} at (mc={mc_min:.3f}, mr={mr_min:.3f})")
-print(f"Min Δfinal={min_df:.6e}")
+print(f"Min ΔS_end={min_dS:.6e}")
 
 # ---- R0 overlay grid ----
 MC, MR = np.meshgrid(m_c_vals, m_r_vals)
@@ -145,9 +144,9 @@ fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 
 # Set symmetric normalization around zero for both plots
 max_abs_peak = float(np.max(np.abs(delta_peak)))
-max_abs_final = float(np.max(np.abs(delta_final)))
+max_abs_S_end = float(np.max(np.abs(delta_S_end)))
 peak_norm = TwoSlopeNorm(vmin=-max_abs_peak, vcenter=0.0, vmax=max_abs_peak)
-final_norm = TwoSlopeNorm(vmin=-max_abs_final, vcenter=0.0, vmax=max_abs_final)
+S_end_norm = TwoSlopeNorm(vmin=-max_abs_S_end, vcenter=0.0, vmax=max_abs_S_end)
 
 # Left: Δ Peak infected proportion (vs baseline)
 im0 = axes[0].imshow(
@@ -168,20 +167,20 @@ axes[0].contour(MC, MR, delta_peak, levels=[0.0], colors="yellow", linewidths=1.
 
 # Right: Δ Final epidemic size (vs baseline)
 im1 = axes[1].imshow(
-    delta_final, origin="lower", aspect="auto",
+    delta_S_end, origin="lower", aspect="auto",
     extent=[m_c_vals[0], m_c_vals[-1], m_r_vals[0], m_r_vals[-1]],
-    cmap="coolwarm", norm=final_norm,
+    cmap="coolwarm", norm=S_end_norm,
 )
 axes[1].set_xlabel(r"Drug contact multiplier $m_c$")
 axes[1].set_ylabel(r"Drug transmission multiplier $m_r$")
-axes[1].set_title("Δ Final epidemic size (vs baseline)")
+axes[1].set_title("Δ Susceptible at end (vs baseline)")
 cbar1 = fig.colorbar(im1, ax=axes[1])
-cbar1.set_label("Δ Final size (1 - S_end)")
+cbar1.set_label("Δ S_end/N0")
 cs1 = axes[1].contour(MC, MR, R0_grid, levels=levels,
                       colors="white", linestyles="dashed", linewidths=1)
 axes[1].clabel(cs1, inline=True, fontsize=8, fmt=lambda v: f"R0={v:g}")
 # Equal-to-baseline contour
-axes[1].contour(MC, MR, delta_final, levels=[0.0], colors="yellow", linewidths=1.5)
+axes[1].contour(MC, MR, delta_S_end, levels=[0.0], colors="yellow", linewidths=1.5)
 
 # ---- Overlay drug paths AFTER axes exist ----
 for ax in np.ravel(axes):
@@ -219,8 +218,8 @@ print(f"Saved figure to {out_path}")
 # Optional: quick screen for near-baseline points
 tol = 1e-3
 mask_baseline_peak = np.abs(delta_peak) <= tol
-mask_baseline_final = np.abs(delta_final) <= tol
-count_both = np.count_nonzero(mask_baseline_peak & mask_baseline_final)
+mask_baseline_S_end = np.abs(delta_S_end) <= tol
+count_both = np.count_nonzero(mask_baseline_peak & mask_baseline_S_end)
 print(f"Grid points ~baseline (both metrics, tol={tol}): {count_both}")
 
 # Test points
@@ -230,5 +229,5 @@ for mc, mr in test_points:
     S, El, Indl, Idl, Rl = sol.T
     I = Indl + Idl
     peak = float(np.max(I))
-    final = float(1.0 - S[-1])
-    print(f"(mc={mc}, mr={mr}) -> Δpeak={peak - baseline_peak_I:.6f}, Δfinal={final - baseline_final_size:.6f}")
+    S_end = float(S[-1])
+    print(f"(mc={mc}, mr={mr}) -> Δpeak={peak - baseline_peak_I:.6f}, ΔS_end={S_end - baseline_S_end:.6f}")
