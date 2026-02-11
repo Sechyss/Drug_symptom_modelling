@@ -4,6 +4,7 @@ import numpy as np
 from scipy.integrate import odeint
 import matplotlib.pyplot as plt
 from matplotlib.ticker import ScalarFormatter
+from matplotlib.colors import TwoSlopeNorm
 
 # Workspace paths
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -42,7 +43,7 @@ N0 = 1.0
 m_c_vals = np.linspace(0.0, 2.0, 60)
 m_r_vals = np.linspace(0.0, 2.0, 60)
 
-# Storage
+# Storage (absolute, then deltas)
 peak_I = np.zeros((len(m_r_vals), len(m_c_vals)))
 S_end = np.zeros_like(peak_I)
 
@@ -74,6 +75,8 @@ def theta_fractions_v5():
 
     kappa_high = kappa_base * (1.0 + kappa_scale * (phi_t - 1.0))
     kappa_low = kappa_base
+
+    # Keep theta_* <= 1 by constraining kappa_* if theta>0
     if theta > 0:
         kappa_high = min(kappa_high, 1.0 / theta)
         kappa_low = min(kappa_low, 1.0 / theta)
@@ -84,10 +87,7 @@ def R0_grids_v5(MC, MR, s_over_n):
     """
     Effective R0 at DFE for each strain (low/high) under v5.
 
-    For strain s:
       R0_s = (S0/N0) * [ (1-θ_s) * β_u + θ_s * β_t ] / σ_s.
-
-    Returns (R0_low, R0_high).
     """
     theta_high, theta_low = theta_fractions_v5()
 
@@ -95,8 +95,9 @@ def R0_grids_v5(MC, MR, s_over_n):
     r_low = float(P.transmission_probability)
     c_high = float(P.contact_rate_high)
     phi_t = float(P.phi_transmission)
-    sigma_h = float(P.phi_recover) * float(P.sigma)
+
     sigma_l = float(P.sigma)
+    sigma_h = float(P.phi_recover) * float(P.sigma)
 
     beta_l_u = c_low * r_low
     beta_l_t = (c_low * MC) * (r_low * MR)
@@ -106,31 +107,43 @@ def R0_grids_v5(MC, MR, s_over_n):
 
     R0_low = s_over_n * (((1.0 - theta_low) * beta_l_u + theta_low * beta_l_t) / sigma_l)
     R0_high = s_over_n * (((1.0 - theta_high) * beta_h_u + theta_high * beta_h_t) / sigma_h)
-
     return R0_low, R0_high
 
-# Precompute R0 contours (independent: low + high)
+# --- R0 precompute (independent: low + high) ---
 MC, MR = np.meshgrid(m_c_vals, m_r_vals)
 R0_low_grid, R0_high_grid = R0_grids_v5(MC, MR, S0_prop)
 R0_LEVELS = [0.75, 1.0, 1.25, 2.0]
 
-# Baseline R0 for each strain at (m_c=1, m_r=1)
+# Baseline R0 (mc=1, mr=1)
 R0_low_baseline, R0_high_baseline = R0_grids_v5(np.array([[1.0]]), np.array([[1.0]]), S0_prop)
 R0_low_baseline = float(R0_low_baseline[0, 0])
 R0_high_baseline = float(R0_high_baseline[0, 0])
 print(f"Baseline R0_low:  {R0_low_baseline:.3f}")
 print(f"Baseline R0_high: {R0_high_baseline:.3f}")
 
-# Simulations
+# --- Baseline simulation (no drug): mc=1, mr=1 ---
+params_baseline = get_param_vec(1.0, 1.0)
+sol0 = odeint(SEIRS_model_v5, y0, t, args=(params_baseline,))
+S_b, Eh_b, Indh_b, Idh_b, Rh_b, El_b, Indl_b, Idl_b, Rl_b = sol0.T
+I_tot_b = Indh_b + Idh_b + Indl_b + Idl_b
+baseline_peak_I = float(np.max(I_tot_b) / N0)
+baseline_S_end = float(S_b[-1] / N0)
+print(f"Baseline metrics -> Peak I/N0: {baseline_peak_I:.6f}, S_end/N0: {baseline_S_end:.6f}")
+
+# --- Grid simulations ---
 for i_r, m_r in enumerate(m_r_vals):
     for i_c, m_c in enumerate(m_c_vals):
         sol = odeint(SEIRS_model_v5, y0, t, args=(get_param_vec(m_c, m_r),))
         S, Eh, Indh, Idh, Rh, El, Indl, Idl, Rl = sol.T
         I_tot = Indh + Idh + Indl + Idl
-        peak_I[i_r, i_c] = I_tot.max() / N0
-        S_end[i_r, i_c] = S[-1] / N0
+        peak_I[i_r, i_c] = float(I_tot.max() / N0)
+        S_end[i_r, i_c] = float(S[-1] / N0)
 
-# Drug path overlays (same as single-strain)
+# Deltas vs baseline
+delta_peak = peak_I - baseline_peak_I
+delta_S_end = S_end - baseline_S_end
+
+# Drug path overlays
 def drug3_curve(m_c_arr, k=0.6):
     mr = 1.0 - k * (m_c_arr - 1.0)
     return np.clip(mr, 0.0, 2.0)
@@ -146,59 +159,67 @@ BASELINE = (1.0, 1.0)
 plt.style.use("default")
 fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 
-# Peak infected proportion
+# Symmetric normalization around zero for deltas
+max_abs_peak = float(np.max(np.abs(delta_peak)))
+max_abs_send = float(np.max(np.abs(delta_S_end)))
+peak_norm = TwoSlopeNorm(vmin=-max_abs_peak, vcenter=0.0, vmax=max_abs_peak)
+send_norm = TwoSlopeNorm(vmin=-max_abs_send, vcenter=0.0, vmax=max_abs_send)
+
+# Left: Δ peak infected
 im0 = axes[0].imshow(
-    peak_I,
+    delta_peak,
     origin="lower",
     aspect="auto",
     extent=[m_c_vals[0], m_c_vals[-1], m_r_vals[0], m_r_vals[-1]],
-    cmap="viridis",
+    cmap="coolwarm",
+    norm=peak_norm,
 )
 axes[0].set_xlabel(r"Drug contact multiplier $m_c$")
 axes[0].set_ylabel(r"Drug transmission multiplier $m_r$")
-axes[0].set_title("Peak infected proportion (two strains)")
+axes[0].set_title("Δ Peak infected proportion (two strains, vs baseline)")
 cbar0 = fig.colorbar(im0, ax=axes[0])
-fmt0 = ScalarFormatter(useOffset=False)
-fmt0.set_scientific(False)
-cbar0.formatter = fmt0
-cbar0.update_ticks()
-cbar0.set_label(r"Peak $(I/N_0)$")
+cbar0.set_label(r"$\Delta$ Peak $(I/N_0)$")
 
-# Susceptible at end
+# Right: Δ S_end
 im1 = axes[1].imshow(
-    S_end,
+    delta_S_end,
     origin="lower",
     aspect="auto",
     extent=[m_c_vals[0], m_c_vals[-1], m_r_vals[0], m_r_vals[-1]],
-    cmap="plasma",
+    cmap="coolwarm",
+    norm=send_norm,
 )
 axes[1].set_xlabel(r"Drug contact multiplier $m_c$")
 axes[1].set_ylabel(r"Drug transmission multiplier $m_r$")
-axes[1].set_title("Susceptible at end (two strains)")
+axes[1].set_title(r"$\Delta$ Susceptible at end (two strains, vs baseline)")
 cbar1 = fig.colorbar(im1, ax=axes[1])
-fmt1 = ScalarFormatter(useOffset=False)
-fmt1.set_scientific(False)
-cbar1.formatter = fmt1
-cbar1.update_ticks()
-cbar1.set_label(r"$S_{end}/N_0$")
+cbar1.set_label(r"$\Delta\, S_{end}/N_0$")
 
-# R0 contours (independent overlays) on both plots
+# R0 contours (independent overlays) on both plots:
+# - Low: white dashed levels; baseline yellow solid
+# - High: black dashed levels; baseline orange solid
 for ax in axes:
-    # Low-virulence strain: white contours + yellow baseline
-    cs_low = ax.contour(MC, MR, R0_low_grid, levels=R0_LEVELS,
-                        colors="white", linestyles="dashed", linewidths=1)
+    cs_low = ax.contour(
+        MC, MR, R0_low_grid, levels=R0_LEVELS,
+        colors="white", linestyles="dashed", linewidths=1
+    )
     ax.clabel(cs_low, inline=True, fontsize=7, fmt=lambda v: f"R0_l={v:g}")
-    ax.contour(MC, MR, R0_low_grid, levels=[R0_low_baseline],
-               colors="white", linestyles="solid", linewidths=2)
+    ax.contour(
+        MC, MR, R0_low_grid, levels=[R0_low_baseline],
+        colors="white", linestyles="solid", linewidths=2
+    )
 
-    # High-virulence strain: black contours + orange baseline
-    cs_high = ax.contour(MC, MR, R0_high_grid, levels=R0_LEVELS,
-                         colors="white", linestyles="dashed", linewidths=1)
+    cs_high = ax.contour(
+        MC, MR, R0_high_grid, levels=R0_LEVELS,
+        colors="black", linestyles="dashed", linewidths=1
+    )
     ax.clabel(cs_high, inline=True, fontsize=7, fmt=lambda v: f"R0_h={v:g}")
-    ax.contour(MC, MR, R0_high_grid, levels=[R0_high_baseline],
-               colors="white", linestyles="solid", linewidths=2)
+    ax.contour(
+        MC, MR, R0_high_grid, levels=[R0_high_baseline],
+        colors="white", linestyles="solid", linewidths=2
+    )
 
-# Baseline + drug paths on both plots
+# Baseline + drug paths
 for ax in axes:
     ax.axvline(1.0, color="gray", lw=1, ls="solid", alpha=0.6, zorder=5)
     ax.axhline(1.0, color="gray", lw=1, ls="solid", alpha=0.6, zorder=5)
@@ -208,10 +229,9 @@ for ax in axes:
     ax.plot(drug2_mc, drug2_mr, color="deepskyblue", lw=2, label="Drug 2: ↓ transmission", zorder=6)
     ax.plot(drug3_mc, drug3_mr, color="black", lw=2, label="Drug 3: ↑ contact & ↓ transmission", zorder=6)
 
-# Legend (smaller, bottom-left)
 axes[0].legend(
     loc="lower left",
-    fontsize=8,
+    fontsize=6,
     frameon=True,
     framealpha=0.9,
     borderaxespad=0.3,
@@ -224,6 +244,6 @@ plt.tight_layout()
 # Save
 fig_dir = os.path.join(ROOT_DIR, "Figures")
 os.makedirs(fig_dir, exist_ok=True)
-out_path = os.path.join(fig_dir, "Explore_v5_twostrains_R0split.png")
+out_path = os.path.join(fig_dir, "Explore_v5_twostrains_R0split_vs_baseline.png")
 plt.savefig(out_path, dpi=600)
 print(f"Saved figure to {out_path}")
