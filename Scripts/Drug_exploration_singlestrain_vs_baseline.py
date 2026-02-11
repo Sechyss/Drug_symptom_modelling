@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import odeint
 from matplotlib.ticker import ScalarFormatter
+from matplotlib.colors import TwoSlopeNorm
 
 # Workspace imports
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -102,6 +103,14 @@ delta_final = final_size - baseline_final_size
 ratio_peak = peak_I / max(baseline_peak_I, eps)
 ratio_final = final_size / max(baseline_final_size, eps)
 
+# After computing delta_peak/delta_final:
+min_dp = float(np.min(delta_peak))
+min_df = float(np.min(delta_final))
+ir_min, ic_min = np.unravel_index(np.argmin(delta_peak), delta_peak.shape)
+mc_min = m_c_vals[ic_min]; mr_min = m_r_vals[ir_min]
+print(f"Min Δpeak={min_dp:.6e} at (mc={mc_min:.3f}, mr={mr_min:.3f})")
+print(f"Min Δfinal={min_df:.6e}")
+
 # ---- R0 overlay grid ----
 MC, MR = np.meshgrid(m_c_vals, m_r_vals)
 # reuse c, r, sigma, theta_low, sfrac defined above
@@ -134,18 +143,22 @@ drug3_end = (2.0, float(drug3_curve(np.array([2.0]), k=0.6)[0]))
 # -------------------- Plotting --------------------
 fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 
+# Set symmetric normalization around zero for both plots
+max_abs_peak = float(np.max(np.abs(delta_peak)))
+max_abs_final = float(np.max(np.abs(delta_final)))
+peak_norm = TwoSlopeNorm(vmin=-max_abs_peak, vcenter=0.0, vmax=max_abs_peak)
+final_norm = TwoSlopeNorm(vmin=-max_abs_final, vcenter=0.0, vmax=max_abs_final)
+
 # Left: Δ Peak infected proportion (vs baseline)
 im0 = axes[0].imshow(
     delta_peak, origin="lower", aspect="auto",
     extent=[m_c_vals[0], m_c_vals[-1], m_r_vals[0], m_r_vals[-1]],
-    cmap="coolwarm",
+    cmap="coolwarm", norm=peak_norm,
 )
 axes[0].set_xlabel(r"Drug contact multiplier $m_c$")
 axes[0].set_ylabel(r"Drug transmission multiplier $m_r$")
 axes[0].set_title("Δ Peak infected proportion (vs baseline)")
 cbar0 = fig.colorbar(im0, ax=axes[0])
-fmt0 = ScalarFormatter(useOffset=False); fmt0.set_scientific(False)
-cbar0.formatter = fmt0; cbar0.update_ticks()
 cbar0.set_label("Δ Peak (I/N0)")
 cs0 = axes[0].contour(MC, MR, R0_grid, levels=levels,
                       colors="white", linestyles="dashed", linewidths=1)
@@ -157,14 +170,12 @@ axes[0].contour(MC, MR, delta_peak, levels=[0.0], colors="yellow", linewidths=1.
 im1 = axes[1].imshow(
     delta_final, origin="lower", aspect="auto",
     extent=[m_c_vals[0], m_c_vals[-1], m_r_vals[0], m_r_vals[-1]],
-    cmap="coolwarm",
+    cmap="coolwarm", norm=final_norm,
 )
 axes[1].set_xlabel(r"Drug contact multiplier $m_c$")
 axes[1].set_ylabel(r"Drug transmission multiplier $m_r$")
 axes[1].set_title("Δ Final epidemic size (vs baseline)")
 cbar1 = fig.colorbar(im1, ax=axes[1])
-fmt1 = ScalarFormatter(useOffset=False); fmt1.set_scientific(False)
-cbar1.formatter = fmt1; cbar1.update_ticks()
 cbar1.set_label("Δ Final size (1 - S_end)")
 cs1 = axes[1].contour(MC, MR, R0_grid, levels=levels,
                       colors="white", linestyles="dashed", linewidths=1)
