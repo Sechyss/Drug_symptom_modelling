@@ -143,16 +143,53 @@ for i_r, m_r in enumerate(m_r_vals):
 delta_peak = peak_I - baseline_peak_I
 delta_S_end = S_end - baseline_S_end
 
-# Drug path overlays
-def drug3_curve(m_c_arr, k=0.6):
-    mr = 1.0 - k * (m_c_arr - 1.0)
-    return np.clip(mr, 0.0, 2.0)
+# Drug path overlays (dose-response; endpoints hit exactly at dose=1)
+# Drug A: ↑ contact & ↓ transmission  (ends at mc=2, mr=0)
+# Drug B: ↑ contact only              (ends at mc=2, mr=1)
+# Drug C: ↓ transmission only         (ends at mc=1, mr=0)
+DRUGA_COLOR = "black"
+DRUGB_COLOR = "orange"
+DRUGC_COLOR = "deepskyblue"
+BASE_COLOR  = "gray"
 
-mc_line = np.linspace(m_c_vals[0], m_c_vals[-1], 200)
-mr_line = np.linspace(m_r_vals[0], m_r_vals[-1], 200)
-drug1_mc, drug1_mr = mc_line, np.full_like(mc_line, 1.0)   # ↑ contact only
-drug2_mc, drug2_mr = np.full_like(mr_line, 1.0), mr_line   # ↓ transmission only
-drug3_mc, drug3_mr = mc_line, drug3_curve(mc_line, k=0.6)  # ↑ contact & ↓ transmission
+dose = np.linspace(0.0, 1.0, 400)
+
+def norm_hill(d, Emax=1.0, EC50=0.3, hill=2.0):
+    """
+    Normalized Hill curve with norm_hill(dose=1) == Emax exactly.
+    Lets us guarantee trajectory endpoints at dose=1.
+    """
+    d = np.asarray(d, dtype=float)
+    num = np.power(d, hill)
+    den = np.power(EC50, hill) + num
+    base = np.divide(num, den, out=np.zeros_like(num), where=(den > 0))
+    base_at_1 = 1.0 / (np.power(EC50, hill) + 1.0)
+    return Emax * (base / base_at_1)
+
+# Curvature knobs (endpoints fixed by Emax=1.0 below)
+EC50_mc, hill_mc = 0.25, 2.0
+EC50_mr, hill_mr = 0.25, 2.0
+
+# Drug B: mc -> 2, mr stays 1
+drugB_mc = 1.0 + norm_hill(dose, Emax=1.0, EC50=EC50_mc, hill=hill_mc)
+drugB_mr = np.full_like(dose, 1.0)
+
+# Drug C: mr -> 0, mc stays 1
+drugC_mc = np.full_like(dose, 1.0)
+drugC_mr = 1.0 - norm_hill(dose, Emax=1.0, EC50=EC50_mr, hill=hill_mr)
+
+# Drug A: mc -> 2 AND mr -> 0
+drugA_mc = 1.0 + norm_hill(dose, Emax=1.0, EC50=EC50_mc, hill=hill_mc)
+drugA_mr = 1.0 - norm_hill(dose, Emax=1.0, EC50=EC50_mr, hill=hill_mr)
+
+# Clamp to sweep bounds
+def clamp_to_bounds(mc, mr, mc_min, mc_max, mr_min, mr_max):
+    return (np.clip(mc, mc_min, mc_max), np.clip(mr, mr_min, mr_max))
+
+drugA_mc, drugA_mr = clamp_to_bounds(drugA_mc, drugA_mr, m_c_vals[0], m_c_vals[-1], m_r_vals[0], m_r_vals[-1])
+drugB_mc, drugB_mr = clamp_to_bounds(drugB_mc, drugB_mr, m_c_vals[0], m_c_vals[-1], m_r_vals[0], m_r_vals[-1])
+drugC_mc, drugC_mr = clamp_to_bounds(drugC_mc, drugC_mr, m_c_vals[0], m_c_vals[-1], m_r_vals[0], m_r_vals[-1])
+
 BASELINE = (1.0, 1.0)
 
 # -------------------- Plotting --------------------
@@ -220,14 +257,22 @@ for ax in axes:
     )
 
 # Baseline + drug paths
-for ax in axes:
-    ax.axvline(1.0, color="gray", lw=1, ls="solid", alpha=0.6, zorder=5)
-    ax.axhline(1.0, color="gray", lw=1, ls="solid", alpha=0.6, zorder=5)
-    ax.plot(*BASELINE, marker="o", color="gray", ms=4, zorder=6)
+dose_marks = [0.0, 0.25, 0.5, 0.75, 1.0]
+mark_idx = [int(p * (len(dose) - 1)) for p in dose_marks]
 
-    ax.plot(drug1_mc, drug1_mr, color="orange", lw=2, label="Drug 1: ↑ contact", zorder=6)
-    ax.plot(drug2_mc, drug2_mr, color="deepskyblue", lw=2, label="Drug 2: ↓ transmission", zorder=6)
-    ax.plot(drug3_mc, drug3_mr, color="black", lw=2, label="Drug 3: ↑ contact & ↓ transmission", zorder=6)
+for ax in axes:
+    ax.axvline(1.0, color=BASE_COLOR, lw=1, ls="solid", alpha=0.6, zorder=5)
+    ax.axhline(1.0, color=BASE_COLOR, lw=1, ls="solid", alpha=0.6, zorder=5)
+    ax.plot(*BASELINE, marker="o", color=BASE_COLOR, ms=4, zorder=6)
+
+    ax.plot(drugA_mc, drugA_mr, color=DRUGA_COLOR, lw=2, label="Drug A: ↑ contact & ↓ transmission", zorder=6)
+    ax.plot(drugB_mc, drugB_mr, color=DRUGB_COLOR, lw=2, label="Drug B: ↑ contact", zorder=6)
+    ax.plot(drugC_mc, drugC_mr, color=DRUGC_COLOR, lw=2, label="Drug C: ↓ transmission", zorder=6)
+
+    # markers along the trajectories
+    ax.plot(drugA_mc[mark_idx], drugA_mr[mark_idx], "o", color=DRUGA_COLOR, ms=3, zorder=7)
+    ax.plot(drugB_mc[mark_idx], drugB_mr[mark_idx], "o", color=DRUGB_COLOR, ms=3, zorder=7)
+    ax.plot(drugC_mc[mark_idx], drugC_mr[mark_idx], "o", color=DRUGC_COLOR, ms=3, zorder=7)
 
 axes[0].legend(
     loc="lower left",

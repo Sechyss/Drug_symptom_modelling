@@ -145,31 +145,46 @@ DRUGB_COLOR = "orange"       # B: ↑ contact only
 DRUGC_COLOR = "deepskyblue"  # C: ↓ transmission only
 BASE_COLOR  = "gray"
 
-dose = np.linspace(0.0, 1.0, 200)
+dose = np.linspace(0.0, 1.0, 400)
 
-def emax_curve(d, Emax, EC50):
-    """Classic saturating exposure-response: effect = Emax * d/(EC50 + d)."""
+def norm_hill(d, Emax=1.0, EC50=0.3, hill=2.0):
+    """
+    Hill curve normalized so that norm_hill(dose=1) == Emax exactly.
+    This guarantees endpoints like mc=1+Emax and mr=1-Emax at dose=1.
+    """
     d = np.asarray(d, dtype=float)
-    return Emax * (d / (EC50 + d + 1e-12))
+    num = np.power(d, hill)
+    den = np.power(EC50, hill) + num
+    base = np.divide(num, den, out=np.zeros_like(num), where=(den > 0))
+    base_at_1 = 1.0 / (np.power(EC50, hill) + 1.0)
+    return Emax * (base / base_at_1)
 
-# Tune these to your biology/PKPD assumptions
-Emax_mc_A, EC50_mc_A = 1.0, 0.25   # max +100% contact for Drug A (mc up to ~2.0)
-Emax_mr_A, EC50_mr_A = 0.7, 0.35   # max -70% transmission for Drug A (mr down to ~0.3)
+# Curvature knobs (endpoints are fixed by Emax values below)
+EC50_mc_A, hill_mc_A = 0.35, 2.0
+EC50_mr_A, hill_mr_A = 0.35, 2.0
+EC50_mc_B, hill_mc_B = 0.25, 2.0
+EC50_mr_C, hill_mr_C = 0.25, 2.0
 
-Emax_mc_B, EC50_mc_B = 1.0, 0.20   # max +100% contact for Drug B
-Emax_mr_C, EC50_mr_C = 1.0, 0.30   # max -100% transmission for Drug C (mr down to ~0.0)
+# Endpoint targets at dose=1:
+# Drug B: mc -> 2  => Emax_mc_B = 1
+# Drug C: mr -> 0  => Emax_mr_C = 1
+# Drug A: mc -> 2 and mr -> 0 => Emax_mc_A = 1, Emax_mr_A = 1
+Emax_mc_A = 1.0
+Emax_mr_A = 1.0
+Emax_mc_B = 1.0
+Emax_mr_C = 1.0
 
-# Drug A: ↑ contact AND ↓ transmission (both saturate, potentially with different EC50s)
-drugA_mc = 1.0 + emax_curve(dose, Emax_mc_A, EC50_mc_A)
-drugA_mr = 1.0 - emax_curve(dose, Emax_mr_A, EC50_mr_A)
+# Drug A: ↑ contact AND ↓ transmission
+drugA_mc = 1.0 + norm_hill(dose, Emax=Emax_mc_A, EC50=EC50_mc_A, hill=hill_mc_A)
+drugA_mr = 1.0 - norm_hill(dose, Emax=Emax_mr_A, EC50=EC50_mr_A, hill=hill_mr_A)
 
 # Drug B: ↑ contact, transmission fixed
-drugB_mc = 1.0 + emax_curve(dose, Emax_mc_B, EC50_mc_B)
+drugB_mc = 1.0 + norm_hill(dose, Emax=Emax_mc_B, EC50=EC50_mc_B, hill=hill_mc_B)
 drugB_mr = np.full_like(dose, 1.0)
 
 # Drug C: ↓ transmission, contact fixed
 drugC_mc = np.full_like(dose, 1.0)
-drugC_mr = 1.0 - emax_curve(dose, Emax_mr_C, EC50_mr_C)
+drugC_mr = 1.0 - norm_hill(dose, Emax=Emax_mr_C, EC50=EC50_mr_C, hill=hill_mr_C)
 
 # Clamp to plotting/sweep bounds (match your m_c_vals/m_r_vals range)
 def clamp_to_bounds(mc, mr, mc_min, mc_max, mr_min, mr_max):
