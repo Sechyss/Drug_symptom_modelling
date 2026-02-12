@@ -139,6 +139,48 @@ drug1_end = (2.0, 1.0)
 drug2_end = (1.0, 0.0)
 drug3_end = (2.0, float(drug3_curve(np.array([2.0]), k=0.6)[0]))
 
+# -------------------- Drug path definitions (dose-response) --------------------
+DRUGA_COLOR = "black"        # A: ↑ contact & ↓ transmission
+DRUGB_COLOR = "orange"       # B: ↑ contact only
+DRUGC_COLOR = "deepskyblue"  # C: ↓ transmission only
+BASE_COLOR  = "gray"
+
+dose = np.linspace(0.0, 1.0, 200)
+
+def emax_curve(d, Emax, EC50):
+    """Classic saturating exposure-response: effect = Emax * d/(EC50 + d)."""
+    d = np.asarray(d, dtype=float)
+    return Emax * (d / (EC50 + d + 1e-12))
+
+# Tune these to your biology/PKPD assumptions
+Emax_mc_A, EC50_mc_A = 1.0, 0.25   # max +100% contact for Drug A (mc up to ~2.0)
+Emax_mr_A, EC50_mr_A = 0.7, 0.35   # max -70% transmission for Drug A (mr down to ~0.3)
+
+Emax_mc_B, EC50_mc_B = 1.0, 0.20   # max +100% contact for Drug B
+Emax_mr_C, EC50_mr_C = 1.0, 0.30   # max -100% transmission for Drug C (mr down to ~0.0)
+
+# Drug A: ↑ contact AND ↓ transmission (both saturate, potentially with different EC50s)
+drugA_mc = 1.0 + emax_curve(dose, Emax_mc_A, EC50_mc_A)
+drugA_mr = 1.0 - emax_curve(dose, Emax_mr_A, EC50_mr_A)
+
+# Drug B: ↑ contact, transmission fixed
+drugB_mc = 1.0 + emax_curve(dose, Emax_mc_B, EC50_mc_B)
+drugB_mr = np.full_like(dose, 1.0)
+
+# Drug C: ↓ transmission, contact fixed
+drugC_mc = np.full_like(dose, 1.0)
+drugC_mr = 1.0 - emax_curve(dose, Emax_mr_C, EC50_mr_C)
+
+# Clamp to plotting/sweep bounds (match your m_c_vals/m_r_vals range)
+def clamp_to_bounds(mc, mr, mc_min, mc_max, mr_min, mr_max):
+    return (np.clip(mc, mc_min, mc_max), np.clip(mr, mr_min, mr_max))
+
+drugA_mc, drugA_mr = clamp_to_bounds(drugA_mc, drugA_mr, m_c_vals[0], m_c_vals[-1], m_r_vals[0], m_r_vals[-1])
+drugB_mc, drugB_mr = clamp_to_bounds(drugB_mc, drugB_mr, m_c_vals[0], m_c_vals[-1], m_r_vals[0], m_r_vals[-1])
+drugC_mc, drugC_mr = clamp_to_bounds(drugC_mc, drugC_mr, m_c_vals[0], m_c_vals[-1], m_r_vals[0], m_r_vals[-1])
+
+baseline_pt = (1.0, 1.0)
+
 # -------------------- Plotting --------------------
 fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 
@@ -183,19 +225,25 @@ axes[1].clabel(cs1, inline=True, fontsize=8, fmt=lambda v: f"R0={v:g}")
 axes[1].contour(MC, MR, delta_S_end, levels=[0.0], colors="yellow", linewidths=1.5)
 
 # ---- Overlay drug paths AFTER axes exist ----
+dose_marks = [0.0, 0.25, 0.5, 0.75, 1.0]
+mark_idx = [int(p * (len(dose) - 1)) for p in dose_marks]
+
 for ax in np.ravel(axes):
     ax.axvline(1.0, color=BASE_COLOR, lw=1, ls="solid", alpha=0.6, zorder=5)
     ax.axhline(1.0, color=BASE_COLOR, lw=1, ls="solid", alpha=0.6, zorder=5)
     ax.plot(*baseline_pt, marker="o", color=BASE_COLOR, ms=4, zorder=6)
 
-    ax.plot(drug1_mc, drug1_mr, color=DRUG1_COLOR, lw=2, label="Drug 1: ↑ contact", zorder=6)
-    ax.plot(*drug1_end, marker="o", color=DRUG1_COLOR, ms=5, zorder=6)
+    # Drug A: curved trajectory in (mc, mr)
+    ax.plot(drugA_mc, drugA_mr, color=DRUGA_COLOR, lw=2, label="Drug A: ↑ contact & ↓ transmission", zorder=6)
+    ax.plot(drugA_mc[mark_idx], drugA_mr[mark_idx], "o", color=DRUGA_COLOR, ms=3, zorder=7)
 
-    ax.plot(drug2_mc, drug2_mr, color=DRUG2_COLOR, lw=2, label="Drug 2: ↓ transmission", zorder=6)
-    ax.plot(*drug2_end, marker="o", color=DRUG2_COLOR, ms=5, zorder=6)
+    # Drug B: saturating increase in mc (still horizontal in mr, but nonlinear in dose)
+    ax.plot(drugB_mc, drugB_mr, color=DRUGB_COLOR, lw=2, label="Drug B: ↑ contact", zorder=6)
+    ax.plot(drugB_mc[mark_idx], drugB_mr[mark_idx], "o", color=DRUGB_COLOR, ms=3, zorder=7)
 
-    ax.plot(drug3_mc, drug3_mr, color=DRUG3_COLOR, lw=2, label="Drug 3: ↑ contact & ↓ transmission", zorder=6)
-    ax.plot(*drug3_end, marker="o", color=DRUG3_COLOR, ms=5, zorder=6)
+    # Drug C: saturating decrease in mr (still vertical in mc, but nonlinear in dose)
+    ax.plot(drugC_mc, drugC_mr, color=DRUGC_COLOR, lw=2, label="Drug C: ↓ transmission", zorder=6)
+    ax.plot(drugC_mc[mark_idx], drugC_mr[mark_idx], "o", color=DRUGC_COLOR, ms=3, zorder=7)
 
 axes[0].legend(
     loc="lower left",
