@@ -58,32 +58,42 @@ def params_tuple_v6(phi_t: float) -> Tuple[float, ...]:
        drug_contact_multiplier, drug_transmission_multiplier,
        birth_rate, death_rate, delta,
        kappa_base, kappa_scale, phi_recover, sigma, tau, theta)
-
-    NOTE: For this exploration we set drug_contact_multiplier = 1 and
-    drug_transmission_multiplier = 1 so the drug has no behavioral effect.
     """
     c_low = float(getattr(P, "contact_rate", 10.0))
-    r_low = float(getattr(P, "transmission_probability_low",
-                          getattr(P, "transmission_probability", 0.025)))
+    r_low = float(
+        getattr(P, "transmission_probability_low",
+                getattr(P, "transmission_probability", 0.025))
+    )
 
-    m_c_drug = 1.0
-    m_r_drug = 1.0
+    # Drug effects (read from params; default to 1.0 if not present)
+    drug_contact_multiplier = float(getattr(P, "drug_contact_multiplier", 1.0))
+    drug_transmission_multiplier = float(getattr(P, "drug_transmission_multiplier", 1.0))
+
+    birth_rate = float(getattr(P, "birth_rate", 0.0))
+    death_rate = float(getattr(P, "death_rate", 0.0))
+    delta = float(getattr(P, "delta", 0.0))
+    kappa_base = float(getattr(P, "kappa_base", 1.0))
+    kappa_scale = float(getattr(P, "kappa_scale", 1.0))
+    phi_recover = float(getattr(P, "phi_recover", 1.0))
+    sigma = float(getattr(P, "sigma", 1 / 5))
+    tau = float(getattr(P, "tau", 1 / 3))
+    theta = float(getattr(P, "theta", 0.3))
 
     return (
         c_low,
         r_low,
         float(phi_t),
-        m_c_drug,
-        m_r_drug,
-        float(getattr(P, "birth_rate", 0.0)),
-        float(getattr(P, "death_rate", 0.0)),
-        float(getattr(P, "delta", 0.0)),
-        float(getattr(P, "kappa_base", 1.0)),
-        float(getattr(P, "kappa_scale", 1.0)),
-        float(getattr(P, "phi_recover", 1.0)),
-        float(getattr(P, "sigma", 1 / 5)),
-        float(getattr(P, "tau", 1 / 3)),
-        float(getattr(P, "theta", 0.3)),
+        drug_contact_multiplier,
+        drug_transmission_multiplier,
+        birth_rate,
+        death_rate,
+        delta,
+        kappa_base,
+        kappa_scale,
+        phi_recover,
+        sigma,
+        tau,
+        theta,
     )
 
 
