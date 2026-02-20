@@ -17,8 +17,9 @@ Run (from repo root)
         --days 365 --steps 365
 
 Notes
-- Uses SEIRS_model_v6, i.e. R0 varies naturally under the model's built-in
+- Uses SEIRS_model_v7, i.e. R0 varies naturally under the model's built-in
     virulence-contact trade-off (c_high decreases with phi).
+- v7 adds drug_contact_restore: drug masks symptoms → restores contact rate.
 - Produces 3D surface “landscapes” over (mc, mr), faceted by phi_transmission.
 - Two rows: high-strain peak and low-strain peak.
 """
@@ -41,7 +42,7 @@ from matplotlib.colors import Normalize
 
 # allow imports from project root
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from Models.SEIRS_Models import SEIRS_model_v6
+from Models.SEIRS_Models import SEIRS_model_v7
 from Models import params as P
 
 COLS = ["S", "Eh", "Indh", "Idh", "Rh", "El", "Indl", "Idl", "Rl"]
@@ -71,11 +72,11 @@ def initial_conditions(normalize: bool = True) -> np.ndarray:
     return y0
 
 
-def c_high_from_phi_v6(c_low: float, phi_t: float) -> float:
-    """Replicates the built-in v6 rule for the high-strain contact rate."""
+def c_high_from_phi_v7(c_low: float, phi_t: float, alpha: float = 0.5) -> float:
+    """Replicates the built-in v7 rule for the high-strain contact rate (exponential decay)."""
     vir_excess_pos = max(0.0, float(phi_t) - 1.0)
-    c_high = float(c_low) * (1.0 - vir_excess_pos)
-    return max(c_high, 0.0)
+    c_high = float(c_low) * np.exp(-alpha * vir_excess_pos)
+    return c_high
 
 
 def theta_high(phi_t: float, theta: float, kappa_base: float, kappa_scale: float) -> float:
@@ -98,7 +99,7 @@ def r0_proxy_high(
     kappa_scale: float,
 ) -> float:
     """A simple high-strain R0 proxy consistent with the analytic weighting logic."""
-    c_high = c_high_from_phi_v6(c_low, phi_t)
+    c_high = c_high_from_phi_v7(c_low, phi_t)
     th = theta_high(phi_t, theta, kappa_base, kappa_scale)
     weight = (1.0 - th) + th * float(mc) * float(mr)
     avg_beta_h = float(phi_t) * c_high * float(r_low) * weight
@@ -106,13 +107,14 @@ def r0_proxy_high(
     return avg_beta_h / denom
 
 
-def params_tuple_v6(phi_t: float, mc: float, mr: float) -> Tuple[float, ...]:
-    """SEIRS_model_v6 expects (14) params."""
+def params_tuple_v7(phi_t: float, mc: float, mr: float) -> Tuple[float, ...]:
+    """SEIRS_model_v7 expects (15) params - adds drug_contact_restore."""
     c_low = float(getattr(P, "contact_rate", 10.0))
     r_low = float(
         getattr(P, "transmission_probability_low", getattr(P, "transmission_probability", 0.025))
     )
 
+    drug_contact_restore = float(getattr(P, "drug_contact_restore", 0.8))
     birth_rate = float(getattr(P, "birth_rate", 0.0))
     death_rate = float(getattr(P, "death_rate", 0.0))
     delta = float(getattr(P, "delta", 0.0))
@@ -129,6 +131,7 @@ def params_tuple_v6(phi_t: float, mc: float, mr: float) -> Tuple[float, ...]:
         float(phi_t),
         float(mc),
         float(mr),
+        drug_contact_restore,
         birth_rate,
         death_rate,
         delta,
@@ -144,7 +147,7 @@ def params_tuple_v6(phi_t: float, mc: float, mr: float) -> Tuple[float, ...]:
 def run_sim(phi_t: float, mc: float, mr: float, days: int, steps: int) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
     t = np.linspace(0, days, steps)
     y0 = initial_conditions(normalize=True)
-    sol = odeint(SEIRS_model_v6, y0, t, args=(params_tuple_v6(phi_t, mc, mr),))
+    sol = odeint(SEIRS_model_v7, y0, t, args=(params_tuple_v7(phi_t, mc, mr),))
     sim = {k: sol[:, i] for i, k in enumerate(COLS)}
     sim["I_high"] = sim["Indh"] + sim["Idh"]
     sim["I_low"] = sim["Indl"] + sim["Idl"]
@@ -185,7 +188,7 @@ def peak_infection_landscape(df: pd.DataFrame, out_path: str) -> None:
     lo_min = float(df["peak_I_low"].min())
     lo_max = float(df["peak_I_low"].max())
 
-    cmap = cm.get_cmap("viridis")
+    cmap = matplotlib.colormaps["viridis"]
     norm_hi = Normalize(vmin=hi_min, vmax=hi_max)
     norm_lo = Normalize(vmin=lo_min, vmax=lo_max)
 
@@ -250,19 +253,14 @@ def peak_infection_landscape(df: pd.DataFrame, out_path: str) -> None:
     sm_lo = cm.ScalarMappable(norm=norm_lo, cmap=cmap)
     sm_lo.set_array([])
 
-    cbar_hi = fig.colorbar(sm_hi, ax=fig.axes[:ncols], shrink=0.75, pad=0.02, aspect=25)
-    cbar_hi.set_label("peak_I_high")
-    cbar_lo = fig.colorbar(sm_lo, ax=fig.axes[ncols:], shrink=0.75, pad=0.02, aspect=25)
-    cbar_lo.set_label("peak_I_low")
-
     fig.suptitle("Peak infection landscapes over (mc, mr), faceted by phi_transmission", y=0.98)
-    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    fig.subplots_adjust(left=0.05, right=0.95, top=0.93, bottom=0.05, wspace=0.3, hspace=0.25)
     plt.savefig(out_path, dpi=600)
     plt.close(fig)
 
 
 def main(argv: List[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Sweep drug modifiers vs phi_transmission (SEIRS v6)")
+    ap = argparse.ArgumentParser(description="Sweep drug modifiers vs phi_transmission (SEIRS v7)")
     ap.add_argument("--phi", nargs="+", type=float, default=None, help="phi_transmission values")
     ap.add_argument("--mc", nargs="+", type=float, default=None, help="drug_contact_multiplier values")
     ap.add_argument("--mr", nargs="+", type=float, default=None, help="drug_transmission_multiplier values")
@@ -279,7 +277,7 @@ def main(argv: List[str] | None = None) -> int:
     mc_vals = sorted(set(float(x) for x in mc_vals))
     mr_vals = sorted(set(float(x) for x in mr_vals))
 
-    fig_dir = os.path.join("Figures", "drug_modifier_phi_sweep")
+    fig_dir = os.path.join( "Figures", "drug_modifier_phi_sweep")
     os.makedirs(fig_dir, exist_ok=True)
 
     # Pull shared params for proxy computations
@@ -296,7 +294,7 @@ def main(argv: List[str] | None = None) -> int:
     rows: List[Dict[str, float]] = []
 
     for phi_t in phi_vals:
-        c_high = c_high_from_phi_v6(c_low, phi_t)
+        c_high = c_high_from_phi_v7(c_low, phi_t)
         th = theta_high(phi_t, theta, kappa_base, kappa_scale)
         for mc in mc_vals:
             for mr in mr_vals:
@@ -308,7 +306,7 @@ def main(argv: List[str] | None = None) -> int:
                     "mc": float(mc),
                     "mr": float(mr),
                     "c_low": float(c_low),
-                    "c_high_v6": float(c_high),
+                    "c_high_v7": float(c_high),
                     "theta_high": float(th),
                     "R0_proxy_high": float(
                         r0_proxy_high(

@@ -75,6 +75,8 @@ contact_rate_high = 8  # default different from low; adjust as needed
 # Drug effects applied to treated infectious individuals only
 drug_contact_multiplier = 1.20      # m_c > 1: treated have more contacts
 drug_transmission_multiplier = 0.75 # m_r < 1: treated transmit less per contact
+drug_contact_restore = 0.8          # v7: how much drug restores contact rate for high-strain
+                                    # 0 = no restoration, 1 = full restoration to c_low
 
 # v3 uses the same transmission_probability_low as v2's transmission_probability
 transmission_probability_low = transmission_probability  # alias for clarity
