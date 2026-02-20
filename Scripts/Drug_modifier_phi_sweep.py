@@ -185,7 +185,7 @@ def peak_infection_landscape(df: pd.DataFrame, out_path: str) -> None:
     lo_min = float(df["peak_I_low"].min())
     lo_max = float(df["peak_I_low"].max())
 
-    cmap = cm.get_cmap("viridis")
+    cmap = matplotlib.colormaps["viridis"]
     norm_hi = Normalize(vmin=hi_min, vmax=hi_max)
     norm_lo = Normalize(vmin=lo_min, vmax=lo_max)
 
@@ -250,13 +250,8 @@ def peak_infection_landscape(df: pd.DataFrame, out_path: str) -> None:
     sm_lo = cm.ScalarMappable(norm=norm_lo, cmap=cmap)
     sm_lo.set_array([])
 
-    cbar_hi = fig.colorbar(sm_hi, ax=fig.axes[:ncols], shrink=0.75, pad=0.02, aspect=25)
-    cbar_hi.set_label("peak_I_high")
-    cbar_lo = fig.colorbar(sm_lo, ax=fig.axes[ncols:], shrink=0.75, pad=0.02, aspect=25)
-    cbar_lo.set_label("peak_I_low")
-
     fig.suptitle("Peak infection landscapes over (mc, mr), faceted by phi_transmission", y=0.98)
-    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    fig.subplots_adjust(left=0.05, right=0.95, top=0.93, bottom=0.05, wspace=0.3, hspace=0.25)
     plt.savefig(out_path, dpi=600)
     plt.close(fig)
 
@@ -279,7 +274,7 @@ def main(argv: List[str] | None = None) -> int:
     mc_vals = sorted(set(float(x) for x in mc_vals))
     mr_vals = sorted(set(float(x) for x in mr_vals))
 
-    fig_dir = os.path.join("Figures", "drug_modifier_phi_sweep")
+    fig_dir = os.path.join( "Figures", "drug_modifier_phi_sweep")
     os.makedirs(fig_dir, exist_ok=True)
 
     # Pull shared params for proxy computations
