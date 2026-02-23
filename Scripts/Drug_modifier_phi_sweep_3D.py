@@ -253,7 +253,6 @@ def peak_infection_landscape(df: pd.DataFrame, out_path: str) -> None:
     sm_lo = cm.ScalarMappable(norm=norm_lo, cmap=cmap)
     sm_lo.set_array([])
 
-    fig.suptitle("Peak infection landscapes over (mc, mr), faceted by phi_transmission", y=0.98)
     fig.subplots_adjust(left=0.05, right=0.95, top=0.93, bottom=0.05, wspace=0.3, hspace=0.25)
     plt.savefig(out_path, dpi=600)
     plt.close(fig)
