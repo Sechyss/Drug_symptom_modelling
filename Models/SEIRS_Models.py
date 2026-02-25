@@ -783,7 +783,7 @@ def SEIRS_model_v7(y, t, params):
     #   φ = 1.5: c_high_untreated = 7.79
     #            Lost contacts = 10 - 7.79 = 2.21
     #            ρ = 0.8: restored = 0.8 × 2.21 = 1.77
-    #            c_high_treated = 7.79 + 1.77 = 9.56 (nearly healthy!)
+    #            c_high_treated = 7.79 + 1.77 = 9.56 
     #   
     #   φ = 2.0: c_high_untreated = 6.07
     #            Lost contacts = 10 - 6.07 = 3.93
@@ -806,8 +806,6 @@ def SEIRS_model_v7(y, t, params):
     # NOTE: m_c_drug effect is separate from drug_contact_restore
     #       m_c_drug: general behavioral change (e.g., feel better → go to work)
     #       drug_contact_restore: specifically restores contacts lost to symptoms
-    
-    c_low_treated = c_low * m_c_drug
 
     # ─────────────────────────────────────────────────────────────────────────
     # STEP 6: Calculate all transmission rates (β)
@@ -838,7 +836,7 @@ def SEIRS_model_v7(y, t, params):
     # β_l_t = c_low_treated × (r_low × m_r_drug)
     # Drug effects on contact rate and transmission probability
     # No virulence boost (no φ term)
-    beta_l_t = c_low_treated * (r_low * m_r_drug)
+    beta_l_t = (c_low * m_c_drug) * (r_low * m_r_drug)
 
     # ─────────────────────────────────────────────────────────────────────────
     # STEP 7: Detection/treatment probabilities (same as v6)

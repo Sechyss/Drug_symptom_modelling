@@ -14,7 +14,6 @@ Rl = 0
 theta = 0.3            # fraction of DETECTED cases that get treated (0..1)
                        # Set low (0.3) as baseline for dose-response experiments
                        # Effective treatment rate = delta_d * theta ≈ 10% per day
-p_recover = 0.5        # treated transmission rate multiplier (<1 means less transmission)
 
 # Virulence modifiers
 phi_transmission = 1.5 # multiplier for high-virulence transmission (beta_h = phi_transmission * beta_l)
