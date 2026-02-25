@@ -266,6 +266,7 @@ def main(argv: List[str] | None = None) -> int:
     ap.add_argument("--days", type=int, default=int(getattr(P, "t_max", 365)))
     ap.add_argument("--steps", type=int, default=int(getattr(P, "t_steps", 365)))
     ap.add_argument("--baseline-phi", type=float, default=float(getattr(P, "phi_transmission", 1.5)))
+    ap.add_argument("--debug", action="store_true", help="Print diagnostic info for phi=1")
     args = ap.parse_args(argv)
 
     phi_vals = args.phi if args.phi is not None else [1.0, 1.2, args.baseline_phi, 1.8, 2.2]
@@ -295,6 +296,37 @@ def main(argv: List[str] | None = None) -> int:
     for phi_t in phi_vals:
         c_high = c_high_from_phi_v7(c_low, phi_t)
         th = theta_high(phi_t, theta, kappa_base, kappa_scale)
+        
+        # Debug output for phi=1
+        if args.debug and np.isclose(phi_t, 1.0):
+            print(f"\n{'='*60}")
+            print(f"DIAGNOSTIC FOR phi_transmission = {phi_t}")
+            print(f"{'='*60}")
+            print(f"Contact rates:")
+            print(f"  c_low       = {c_low}")
+            print(f"  c_high      = {c_high}")
+            print(f"  ratio       = {c_high/c_low:.6f} (should be 1.0)")
+            print(f"\nTransmission probabilities:")
+            print(f"  r_low       = {r_low}")
+            print(f"  phi_t       = {phi_t}")
+            print(f"\nBeta values (untreated):")
+            print(f"  beta_l      = {c_low * r_low}")
+            print(f"  beta_h      = {c_high * r_low * phi_t}")
+            print(f"  ratio       = {(c_high * r_low * phi_t)/(c_low * r_low):.6f}")
+            print(f"\nDetection/treatment:")
+            print(f"  kappa_base  = {kappa_base}")
+            print(f"  kappa_scale = {kappa_scale}")
+            print(f"  theta       = {theta}")
+            print(f"  theta_high  = {th}")
+            print(f"  theta_low   = {kappa_base * theta}")
+            print(f"  ratio       = {th/(kappa_base * theta):.6f}")
+            print(f"\nRecovery:")
+            print(f"  phi_recover = {phi_recover}")
+            print(f"  sigma       = {sigma}")
+            print(f"  sigma_high  = {phi_recover * sigma}")
+            print(f"  ratio       = {(phi_recover * sigma)/sigma:.6f}")
+            print(f"{'='*60}\n")
+        
         for mc in mc_vals:
             for mr in mr_vals:
                 t, sim = run_sim(phi_t, mc, mr, args.days, args.steps)
@@ -327,9 +359,29 @@ def main(argv: List[str] | None = None) -> int:
                     "peak_I_low": float(m["peak_I_low"]),
                 })
                 rows.append(row)
+                
+                # Additional debug for specific parameter combination
+                if args.debug and np.isclose(phi_t, 1.0) and np.isclose(mc, 1.0) and np.isclose(mr, 1.0):
+                    print(f"\nResults for phi={phi_t}, mc={mc}, mr={mr}:")
+                    print(f"  peak_I_high = {m['peak_I_high']:.6f}")
+                    print(f"  peak_I_low  = {m['peak_I_low']:.6f}")
+                    print(f"  ratio       = {m['peak_I_high']/m['peak_I_low']:.6f}")
+                    print(f"  high_frac_end = {m['high_frac_end']:.6f}")
 
     df = pd.DataFrame(rows).sort_values(["phi_transmission", "mc", "mr"])\
         .reset_index(drop=True)
+
+    # Print summary for phi=1 cases
+    if args.debug and 1.0 in phi_vals:
+        phi1_data = df[np.isclose(df["phi_transmission"], 1.0)]
+        print(f"\n{'='*60}")
+        print(f"SUMMARY FOR phi_transmission = 1.0")
+        print(f"{'='*60}")
+        print(phi1_data[["mc", "mr", "peak_I_high", "peak_I_low"]])
+        print(f"\nMean peak_I_high: {phi1_data['peak_I_high'].mean():.6f}")
+        print(f"Mean peak_I_low:  {phi1_data['peak_I_low'].mean():.6f}")
+        print(f"Std peak_I_high:  {phi1_data['peak_I_high'].std():.6f}")
+        print(f"Std peak_I_low:   {phi1_data['peak_I_low'].std():.6f}")
 
     out_fig = os.path.join(fig_dir, "peak_infection_landscape.png")
     peak_infection_landscape(df, out_fig)
