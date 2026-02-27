@@ -843,7 +843,7 @@ def SEIRS_model_v7(y, t, params):
     # ─────────────────────────────────────────────────────────────────────────
     # 
     # κ_high = κ_base × (1 + κ_scale × (φ - 1))
-    # Higher virulence → more detection (seek care for severe symptoms)
+    # Higher virulence → more severe symptoms → higher detection
     # 
     # This creates an INTERESTING DYNAMIC:
     # High virulence is more likely to be DETECTED (κ_high > κ_low)
@@ -916,6 +916,219 @@ def SEIRS_model_v7(y, t, params):
 
     # RECOVERED
     # dR/dt = σ × (I_nd + I_d) - δ × R - death
+    dRhdt = sigma_h * (Indh + Idh) - delta * Rh - death_rate * Rh
+    dRldt = sigma_l * (Indl + Idl) - delta * Rl - death_rate * Rl
+
+    return np.array([dSdt, dEhdt, dIndhdt, dIdhdt, dRhdt, dEldt, dIndldt, dIdldt, dRldt])
+
+
+def SEIRS_model_v8(y, t, params):
+    """
+    v8: Unified contact restoration mechanism (virulence-aware symptom masking).
+    
+    ═══════════════════════════════════════════════════════════════════════════
+    KEY DIFFERENCE FROM v7
+    ═══════════════════════════════════════════════════════════════════════════
+    
+    In v7: Two separate mechanisms:
+           - m_c_drug: general contact boost (applies to all treated)
+           - drug_contact_restore (ρ): specific to high-strain
+           Creates confusing interactions and biological ambiguity.
+    
+    In v8: Single unified mechanism:
+           - restoration_efficiency (ρ): how well drug masks symptoms
+           - Applies proportionally to symptomatic burden
+           
+           c_treated = c_untreated + ρ × (c_low - c_untreated)
+           
+           Where (c_low - c_untreated) = contacts LOST to symptoms
+           
+    ═══════════════════════════════════════════════════════════════════════════
+    BIOLOGICAL RATIONALE
+    ═══════════════════════════════════════════════════════════════════════════
+    
+    Symptoms reduce contacts proportional to their severity:
+      - No symptoms (healthy): c = c_low (baseline)
+      - Mild symptoms (low-strain): c ≈ c_low (stays home a bit)
+      - Severe symptoms (high-strain untreated): c = c_high << c_low (bedridden)
+    
+    Drug masks symptoms → restores lost contacts proportional to severity:
+      - High-strain treated: can restore much (lost 30% of contacts)
+      - Low-strain treated: can restore little (lost 5% of contacts)
+    
+    This is BIOLOGICALLY REALISTIC:
+      Drug effectiveness depends on how much symptom burden exists to mask!
+      No symptoms → no restoration possible
+      Severe symptoms → drug can restore substantial contacts
+    
+    ═══════════════════════════════════════════════════════════════════════════
+    PARAMETERS (14 total) - simplified from v7's 15
+    ═══════════════════════════════════════════════════════════════════════════
+    (c_low, r_low, phi_t,
+     restoration_efficiency, m_r_drug,
+     birth_rate, death_rate, delta,
+     kappa_base, kappa_scale,
+     phi_recover, sigma, tau, theta)
+    
+    REMOVED:
+      - m_c_drug (general contact multiplier) → replaced by restoration_efficiency
+      - drug_contact_restore → merged into restoration_efficiency
+    
+    NEW/MODIFIED:
+      restoration_efficiency (ρ) = degree to which drug restores contacts lost to symptoms
+        - ρ = 0: no symptom masking (sick stay home regardless of treatment)
+        - ρ = 1: complete symptom masking (treated feel/appear healthy)
+        - ρ = 0.8 (typical): substantial but not complete restoration
+        
+    KEPT:
+      - m_r_drug: transmission probability modifier (antivirals reduce viral load)
+        Still acts separately from contact restoration
+    
+    ═══════════════════════════════════════════════════════════════════════════
+    """
+    # ─────────────────────────────────────────────────────────────────────────
+    # STEP 1: Sanitize state variables
+    # ─────────────────────────────────────────────────────────────────────────
+    y = np.maximum(np.asarray(y, dtype=float), 0.0)
+    S, Eh, Indh, Idh, Rh, El, Indl, Idl, Rl = y
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # STEP 2: Validate and unpack parameters
+    # ─────────────────────────────────────────────────────────────────────────
+    if len(params) != 14:
+        raise ValueError(
+            "SEIRS_model_v8 expects 14 params: "
+            "(c_low, r_low, phi_t, restoration_efficiency, m_r_drug, "
+            "birth_rate, death_rate, delta, kappa_base, kappa_scale, "
+            "phi_recover, sigma, tau, theta)"
+        )
+
+    (c_low, r_low, phi_t,
+     restoration_efficiency, m_r_drug,
+     birth_rate, death_rate, delta,
+     kappa_base, kappa_scale,
+     phi_recover, sigma, tau, theta) = params
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # STEP 3: Calculate contact rates with VIRULENCE PENALTY
+    # ─────────────────────────────────────────────────────────────────────────
+    # 
+    # Untreated contact rates: virulence causes symptom-induced reduction
+    # c_high_untreated = c_low × exp(-α × max(0, φ - 1))
+    
+    alpha = 0.5  # virulence penalty severity
+    vir_excess_pos = max(0.0, phi_t - 1.0)
+    c_high_untreated = c_low * np.exp(-alpha * vir_excess_pos)
+    
+    # LOW-STRAIN: mild symptoms, only minor contact reduction
+    # For v8, we assume low-strain has minimal symptom burden
+    # If you want to model it explicitly:
+    # c_low_untreated = c_low × exp(-α_low × (φ - 1))
+    # For now, c_low_untreated ≈ c_low (no penalty for low-strain)
+    c_low_untreated = c_low
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # STEP 4: UNIFIED CONTACT RESTORATION (KEY v8 CHANGE)
+    # ─────────────────────────────────────────────────────────────────────────
+    # 
+    # FORMULA:
+    # c_treated = c_untreated + ρ × (c_low - c_untreated)
+    # 
+    # Biological interpretation:
+    #   - Baseline (c_low): healthy contact rate
+    #   - Untreated: reduced contact rate due to symptoms
+    #   - Drug restores: ρ fraction of lost contacts
+    # 
+    # EXAMPLE CALCULATIONS (c_low=10, φ=1.5, α=0.5):
+    #   
+    #   High-strain:
+    #     c_high_untreated = 10 × exp(-0.5×0.5) = 7.79
+    #     contacts_lost = 10 - 7.79 = 2.21
+    #     
+    #     ρ = 0: c_high_treated = 7.79 (no restoration)
+    #     ρ = 0.5: c_high_treated = 7.79 + 0.5×2.21 = 8.90
+    #     ρ = 0.8: c_high_treated = 7.79 + 0.8×2.21 = 9.56
+    #     ρ = 1.0: c_high_treated = 10.00 (full restoration)
+    #   
+    #   Low-strain:
+    #     c_low_untreated = 10 (no penalty)
+    #     contacts_lost = 10 - 10 = 0
+    #     c_low_treated = 10 + ρ×0 = 10 (no restoration needed)
+    # 
+    # KEY INSIGHT:
+    # Drug effectiveness depends ONLY on symptom severity!
+    # High virulence (more symptoms) → more restoration possible
+    # Low virulence (mild symptoms) → little restoration possible
+    # 
+    # This avoids the awkward "why does low-strain get a boost?" question
+    
+    c_high_treated = c_high_untreated + restoration_efficiency * (c_low - c_high_untreated)
+    c_low_treated = c_low_untreated + restoration_efficiency * (c_low - c_low_untreated)
+    # Note: c_low_treated = c_low since c_low_untreated = c_low
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # STEP 5: Calculate transmission rates (β)
+    # ─────────────────────────────────────────────────────────────────────────
+    
+    # HIGH-STRAIN UNTREATED:
+    # β_h_u = c_high_untreated × r_low × φ
+    beta_h_u = c_high_untreated * r_low * phi_t
+    
+    # HIGH-STRAIN TREATED:
+    # β_h_t = c_high_treated × (r_low × m_r_drug) × φ
+    # Contact restoration + drug transmission reduction
+    beta_h_t = c_high_treated * (r_low * m_r_drug) * phi_t
+    
+    # LOW-STRAIN UNTREATED:
+    # β_l_u = c_low × r_low
+    beta_l_u = c_low_untreated * r_low
+    
+    # LOW-STRAIN TREATED:
+    # β_l_t = c_low_treated × (r_low × m_r_drug)
+    # Since c_low_treated = c_low_untreated, only m_r_drug changes transmission
+    beta_l_t = c_low_treated * (r_low * m_r_drug)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # STEP 6: Detection/treatment probabilities
+    # ─────────────────────────────────────────────────────────────────────────
+    # 
+    # Higher virulence → more severe symptoms → higher detection
+    # κ_high = κ_base × (1 + κ_scale × (φ - 1))
+    
+    kappa_high = kappa_base * (1 + kappa_scale * vir_excess_pos)
+    kappa_low = kappa_base
+    if theta > 0:
+        kappa_high = min(kappa_high, 1.0 / theta)
+        kappa_low = min(kappa_low, 1.0 / theta)
+
+    theta_high = kappa_high * theta
+    theta_low = kappa_low * theta
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # STEP 7: Forces of Infection
+    # ─────────────────────────────────────────────────────────────────────────
+    
+    B_h = beta_h_u * Indh + beta_h_t * Idh
+    B_l = beta_l_u * Indl + beta_l_t * Idl
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # STEP 8: ODEs
+    # ─────────────────────────────────────────────────────────────────────────
+    
+    dSdt = birth_rate - (B_h + B_l) * S + delta * (Rh + Rl) - death_rate * S
+    
+    dEhdt = B_h * S - tau * Eh - death_rate * Eh
+    dEldt = B_l * S - tau * El - death_rate * El
+
+    sigma_h = phi_recover * sigma
+    sigma_l = sigma
+
+    dIndhdt = (1.0 - theta_high) * tau * Eh - sigma_h * Indh - death_rate * Indh
+    dIndldt = (1.0 - theta_low) * tau * El - sigma_l * Indl - death_rate * Indl
+    
+    dIdhdt = theta_high * tau * Eh - sigma_h * Idh - death_rate * Idh
+    dIdldt = theta_low * tau * El - sigma_l * Idl - death_rate * Idl
+
     dRhdt = sigma_h * (Indh + Idh) - delta * Rh - death_rate * Rh
     dRldt = sigma_l * (Indl + Idl) - delta * Rl - death_rate * Rl
 
