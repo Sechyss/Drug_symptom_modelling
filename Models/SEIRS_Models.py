@@ -968,7 +968,7 @@ def SEIRS_model_v8(y, t, params):
      restoration_efficiency, m_r_drug,
      birth_rate, death_rate, delta,
      kappa_base, kappa_scale,
-     phi_recover, sigma, tau, theta)
+     sigma, tau, theta)
     
     REMOVED:
       - m_c_drug (general contact multiplier) → replaced by restoration_efficiency
@@ -995,19 +995,18 @@ def SEIRS_model_v8(y, t, params):
     # ─────────────────────────────────────────────────────────────────────────
     # STEP 2: Validate and unpack parameters
     # ─────────────────────────────────────────────────────────────────────────
-    if len(params) != 14:
+    if len(params) != 13:
         raise ValueError(
-            "SEIRS_model_v8 expects 14 params: "
+            "SEIRS_model_v8 expects 13 params: "
             "(c_low, r_low, phi_t, restoration_efficiency, m_r_drug, "
             "birth_rate, death_rate, delta, kappa_base, kappa_scale, "
-            "phi_recover, sigma, tau, theta)"
+            "sigma, tau, theta)"
         )
 
     (c_low, r_low, phi_t,
      restoration_efficiency, m_r_drug,
      birth_rate, death_rate, delta,
-     kappa_base, kappa_scale,
-     phi_recover, sigma, tau, theta) = params
+     kappa_base, kappa_scale, sigma, tau, theta) = params
 
     # ─────────────────────────────────────────────────────────────────────────
     # STEP 3: Calculate contact rates with VIRULENCE PENALTY
@@ -1063,8 +1062,7 @@ def SEIRS_model_v8(y, t, params):
     # This avoids the awkward "why does low-strain get a boost?" question
     
     c_high_treated = c_high_untreated + restoration_efficiency * (c_low - c_high_untreated)
-    c_low_treated = c_low_untreated + restoration_efficiency * (c_low - c_low_untreated)
-    # Note: c_low_treated = c_low since c_low_untreated = c_low
+    c_low_treated = c_low  # no restoration for low-strain (no symptom loss)
 
     # ─────────────────────────────────────────────────────────────────────────
     # STEP 5: Calculate transmission rates (β)
@@ -1120,8 +1118,211 @@ def SEIRS_model_v8(y, t, params):
     dEhdt = B_h * S - tau * Eh - death_rate * Eh
     dEldt = B_l * S - tau * El - death_rate * El
 
-    sigma_h = phi_recover * sigma
+    sigma_h = sigma
     sigma_l = sigma
+
+    dIndhdt = (1.0 - theta_high) * tau * Eh - sigma_h * Indh - death_rate * Indh
+    dIndldt = (1.0 - theta_low) * tau * El - sigma_l * Indl - death_rate * Indl
+    
+    dIdhdt = theta_high * tau * Eh - sigma_h * Idh - death_rate * Idh
+    dIdldt = theta_low * tau * El - sigma_l * Idl - death_rate * Idl
+
+    dRhdt = sigma_h * (Indh + Idh) - delta * Rh - death_rate * Rh
+    dRldt = sigma_l * (Indl + Idl) - delta * Rl - death_rate * Rl
+
+    return np.array([dSdt, dEhdt, dIndhdt, dIdhdt, dRhdt, dEldt, dIndldt, dIdldt, dRldt])
+
+
+def SEIRS_model_v9(y, t, params):
+    """
+    v9: Virulence penalty on contacts KEPT, but recovery rate scales with beta
+        to maintain constant R0 baseline.
+    
+    ═══════════════════════════════════════════════════════════════════════════
+    KEY DESIGN PRINCIPLE
+    ═══════════════════════════════════════════════════════════════════════════
+    
+    PROBLEM WITH v8:
+      High virulence reduces contacts: c_high = c_low × exp(-α(φ-1)) < c_low
+      This creates a FITNESS COST even without drug:
+        β_h = c_high × r × φ  vs  β_l = c_low × r
+        R0_h = β_h / σ  vs  R0_l = β_l / σ
+        
+      High virulence has both:
+        - Contact penalty (reduced c)
+        - Transmission boost (φ multiplier)
+      Net effect: which dominates? Depends on parameters.
+    
+    SOLUTION IN v9:
+      Keep the contact penalty (biological realism: sick stay home)
+      BUT scale recovery rate to maintain R0 balance:
+        
+        σ_h = σ × (β_h / β_l)
+        
+      This ensures:
+        R0_h = β_h / σ_h = β_h / (σ × β_h/β_l) = β_l / σ = R0_l ✓
+      
+    MATHEMATICAL CONSEQUENCE:
+      R0 is EQUAL across strains at baseline (no drug)
+      This makes high virulence FITNESS-NEUTRAL without treatment
+      
+      When drug is applied:
+      - Restoration increases β_h (restores lost contacts)
+      - But σ_h stays fixed (not affected by drug)
+      - Result: R0_h increases MORE than R0_l (if restoration > transmission reduction)
+      - Selection pressure for high virulence when drug is used!
+    
+    ═══════════════════════════════════════════════════════════════════════════
+    BIOLOGICAL INTERPRETATION
+    ═══════════════════════════════════════════════════════════════════════════
+    
+    High-virulence strain:
+      - Causes severe symptoms (fever, cough, fatigue)
+      - Sick individuals reduce contacts naturally (stay home)
+      - BUT their immune system responds more aggressively
+      - Faster immune response = faster pathogen clearance
+      - Shorter infectious period (higher σ)
+    
+    This balances the transmission advantage (φ) with the contact penalty!
+    
+    ═══════════════════════════════════════════════════════════════════════════
+    PARAMETERS (13 total) - same as v8
+    ═══════════════════════════════════════════════════════════════════════════
+    (c_low, r_low, phi_t,
+     restoration_efficiency, m_r_drug,
+     birth_rate, death_rate, delta,
+     kappa_base, kappa_scale,
+     sigma, tau, theta)
+    
+    No new parameters! Only the model logic changes.
+    
+    ═══════════════════════════════════════════════════════════════════════════
+    """
+    # ─────────────────────────────────────────────────────────────────────────
+    # STEP 1: Sanitize state variables
+    # ─────────────────────────────────────────────────────────────────────────
+    y = np.maximum(np.asarray(y, dtype=float), 0.0)
+    S, Eh, Indh, Idh, Rh, El, Indl, Idl, Rl = y
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # STEP 2: Validate and unpack parameters
+    # ─────────────────────────────────────────────────────────────────────────
+    if len(params) != 13:
+        raise ValueError(
+            "SEIRS_model_v9 expects 13 params: "
+            "(c_low, r_low, phi_t, restoration_efficiency, m_r_drug, "
+            "birth_rate, death_rate, delta, kappa_base, kappa_scale, "
+            "sigma, tau, theta)"
+        )
+
+    (c_low, r_low, phi_t,
+     restoration_efficiency, m_r_drug,
+     birth_rate, death_rate, delta,
+     kappa_base, kappa_scale, sigma, tau, theta) = params
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # STEP 3: Calculate contact rates with VIRULENCE PENALTY (KEEP FROM v8)
+    # ─────────────────────────────────────────────────────────────────────────
+    # 
+    # High-strain untreated: symptoms reduce contact rate
+    # c_high_untreated = c_low × exp(-α × max(0, φ - 1))
+    
+    alpha = 0.5  # virulence penalty severity
+    vir_excess_pos = max(0.0, phi_t - 1.0)
+    c_high_untreated = c_low * np.exp(-alpha * vir_excess_pos)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # STEP 4: Contact restoration (SAME AS v8)
+    # ─────────────────────────────────────────────────────────────────────────
+    
+    c_high_treated = c_high_untreated + restoration_efficiency * (c_low - c_high_untreated)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # STEP 5: Calculate TRANSMISSION RATES (β)
+    # ─────────────────────────────────────────────────────────────────────────
+    # HIGH-STRAIN:
+    #   β_h_u = c_high_untreated × r_low × φ
+    #   β_h_t = c_high_treated × (r_low × m_r_drug) × φ
+    # 
+    # LOW-STRAIN:
+    #   β_l_u = c_low × r_low
+    #   β_l_t = c_low × (r_low × m_r_drug)
+    
+    beta_h_u = c_high_untreated * r_low * phi_t
+    beta_h_t = c_high_treated * (r_low * m_r_drug) * phi_t
+    
+    beta_l_u = c_low * r_low
+    beta_l_t = c_low * (r_low * m_r_drug)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # STEP 6: CALCULATE RECOVERY RATES (KEY v9 CHANGE)
+    # ─────────────────────────────────────────────────────────────────────────
+    # 
+    # DESIGN GOAL: Keep R0 constant across strains
+    # 
+    # R0 = β / σ
+    # 
+    # For equal R0:
+    #   R0_h = R0_l
+    #   β_h / σ_h = β_l / σ_l
+    #   σ_h / σ_l = β_h / β_l
+    # 
+    # For UNTREATED individuals (baseline):
+    #   σ_h = σ_l × (β_h_u / β_l_u)
+    #   σ_h = σ × (β_h_u / β_l_u)
+    # 
+    # EXAMPLE CALCULATION (c_low=10, r_low=0.025, φ=1.5, α=0.5):
+    #   c_high_u = 10 × exp(-0.5×0.5) = 7.79
+    #   β_h_u = 7.79 × 0.025 × 1.5 = 0.2924
+    #   β_l_u = 10 × 0.025 = 0.25
+    #   β_h_u / β_l_u = 0.2924 / 0.25 = 1.170
+    #   
+    #   If σ = 0.2 (5-day infectious period):
+    #   σ_h = 0.2 × 1.170 = 0.234
+    #   
+    #   Verify:
+    #   R0_h = 0.2924 / 0.234 = 1.25
+    #   R0_l = 0.25 / 0.2 = 1.25 ✓
+    
+    # Calculate baseline (untreated) transmission ratio
+    beta_ratio = beta_h_u / max(beta_l_u, 1e-10)  # protect against division by zero
+    
+    # Scale recovery rate to maintain R0 balance
+    sigma_h = sigma * beta_ratio
+    sigma_l = sigma
+    
+    # Ensure strictly positive recovery rates
+    sigma_h = max(sigma_h, 1e-8)
+    sigma_l = max(sigma_l, 1e-8)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # STEP 7: Detection/treatment probabilities (SAME AS v8)
+    # ─────────────────────────────────────────────────────────────────────────
+    
+    kappa_high = kappa_base * (1 + kappa_scale * vir_excess_pos)
+    kappa_low = kappa_base
+    if theta > 0:
+        kappa_high = min(kappa_high, 1.0 / theta)
+        kappa_low = min(kappa_low, 1.0 / theta)
+
+    theta_high = kappa_high * theta
+    theta_low = kappa_low * theta
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # STEP 8: Forces of Infection
+    # ─────────────────────────────────────────────────────────────────────────
+    
+    B_h = beta_h_u * Indh + beta_h_t * Idh
+    B_l = beta_l_u * Indl + beta_l_t * Idl
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # STEP 9: ODEs
+    # ─────────────────────────────────────────────────────────────────────────
+    
+    dSdt = birth_rate - (B_h + B_l) * S + delta * (Rh + Rl) - death_rate * S
+    
+    dEhdt = B_h * S - tau * Eh - death_rate * Eh
+    dEldt = B_l * S - tau * El - death_rate * El
 
     dIndhdt = (1.0 - theta_high) * tau * Eh - sigma_h * Indh - death_rate * Indh
     dIndldt = (1.0 - theta_low) * tau * El - sigma_l * Indl - death_rate * Indl

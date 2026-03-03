@@ -32,6 +32,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize, TwoSlopeNorm
 import matplotlib.cm as cm
+from matplotlib.patches import FancyArrowPatch
 
 # allow imports from project root
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -81,7 +82,7 @@ def c_high_from_phi_v8(c_low: float, phi_t: float, alpha: float = 0.5) -> float:
 
 
 def params_tuple_v8(phi_t: float, restore: float, mr: float) -> Tuple[float, ...]:
-    """SEIRS_model_v8 expects 14 params."""
+    """SEIRS_model_v8 expects 13 params."""
     c_low = float(getattr(P, "contact_rate", 10.0))
     r_low = float(
         getattr(P, "transmission_probability_low", getattr(P, "transmission_probability", 0.025))
@@ -92,7 +93,6 @@ def params_tuple_v8(phi_t: float, restore: float, mr: float) -> Tuple[float, ...
     delta = float(getattr(P, "delta", 0.0))
     kappa_base = float(getattr(P, "kappa_base", 1.0))
     kappa_scale = float(getattr(P, "kappa_scale", 1.0))
-    phi_recover = float(getattr(P, "phi_recover", 1.0))
     sigma = float(getattr(P, "sigma", 1.0 / 5.0))
     tau = float(getattr(P, "tau", 1.0 / 3.0))
     theta = float(getattr(P, "theta", 0.3))
@@ -102,7 +102,7 @@ def params_tuple_v8(phi_t: float, restore: float, mr: float) -> Tuple[float, ...
         float(restore), float(mr),
         birth_rate, death_rate, delta,
         kappa_base, kappa_scale,
-        phi_recover, sigma, tau, theta
+        sigma, tau, theta
     )
 
 
@@ -153,9 +153,7 @@ def peak_infection_heatmaps(df: pd.DataFrame, out_path: str, max_phi_panels: int
 
     phi_all = sorted(df["phi_transmission"].unique())
     if len(phi_all) > max_phi_panels:
-        idx = np.linspace(0, len(phi_all) - 1, max_phi_panels).astype(int)
-        phi_vals = [phi_all[i] for i in idx]
-        print(f"ℹ Plotting {len(phi_vals)} phi slices out of {len(phi_all)} total.")
+        phi_vals = [phi_all[int(i * len(phi_all) / max_phi_panels)] for i in range(max_phi_panels)]
     else:
         phi_vals = phi_all
 
@@ -174,58 +172,47 @@ def peak_infection_heatmaps(df: pd.DataFrame, out_path: str, max_phi_panels: int
     im_h_ref = None
     im_l_ref = None
 
+    # Get parameter ranges for drug trajectory
+    restoration_min = df["restoration_efficiency"].min()
+    restoration_max = df["restoration_efficiency"].max()
+    restoration_baseline = df[df["restoration_efficiency"] == restoration_min].iloc[0]["restoration_efficiency"] \
+        if len(df[df["restoration_efficiency"] == restoration_min]) > 0 else restoration_min
+    mr_min = df["mr"].min()
+    mr_max = df["mr"].max()
+
     for phi_idx, phi_t in enumerate(phi_vals):
-        df_phi = df[np.isclose(df["phi_transmission"], phi_t)]
+        df_phi = df[df["phi_transmission"] == phi_t]
 
-        ax_h = axes[0, phi_idx]
-        pivot_high = df_phi.pivot(
-            index="mr", columns="restoration_efficiency", values="delta_peak_I_high"
-        ).sort_index().sort_index(axis=1)
-
-        im_h = ax_h.imshow(
-            pivot_high.values,
-            aspect="auto",
-            origin="lower",
-            interpolation="nearest",
-            cmap="coolwarm",
-            norm=norm_high,
-            extent=[
-                pivot_high.columns.min(), pivot_high.columns.max(),
-                pivot_high.index.min(), pivot_high.index.max()
-            ],
+        # Pivot for heatmap
+        pivot_high = df_phi.pivot_table(
+            index="mr", columns="restoration_efficiency", values="delta_peak_I_high", sort=True
         )
+        pivot_low = df_phi.pivot_table(
+            index="mr", columns="restoration_efficiency", values="delta_peak_I_low", sort=True
+        )
+
+        # High-strain heatmap
+        im_h = axes[0, phi_idx].imshow(
+            pivot_high.values, origin="lower", aspect="auto", cmap="coolwarm", norm=norm_high,
+            extent=[restoration_min, restoration_max, mr_min, mr_max]
+        )
+        axes[0, phi_idx].set_title(f"High-strain (φ={phi_t})")
+        axes[0, phi_idx].set_xlabel("Restoration efficiency ρ")
+        axes[0, phi_idx].set_ylabel("Drug transmission multiplier m_r")
+
+        # Low-strain heatmap
+        im_l = axes[1, phi_idx].imshow(
+            pivot_low.values, origin="lower", aspect="auto", cmap="coolwarm", norm=norm_low,
+            extent=[restoration_min, restoration_max, mr_min, mr_max]
+        )
+        axes[1, phi_idx].set_title(f"Low-strain (φ={phi_t})")
+        axes[1, phi_idx].set_xlabel("Restoration efficiency ρ")
+        axes[1, phi_idx].set_ylabel("Drug transmission multiplier m_r")
+
         if im_h_ref is None:
             im_h_ref = im_h
-
-        ax_h.set_title(f"φ={phi_t:.2f} — High-strain (Δ from baseline)", fontsize=10, fontweight="bold")
-        ax_h.set_xlabel("Restoration Efficiency (ρ)", fontsize=9)
-        if phi_idx == 0:
-            ax_h.set_ylabel("Transmission Multiplier (mr)", fontsize=9)
-
-        ax_l = axes[1, phi_idx]
-        pivot_low = df_phi.pivot(
-            index="mr", columns="restoration_efficiency", values="delta_peak_I_low"
-        ).sort_index().sort_index(axis=1)
-
-        im_l = ax_l.imshow(
-            pivot_low.values,
-            aspect="auto",
-            origin="lower",
-            interpolation="nearest",
-            cmap="coolwarm",
-            norm=norm_low,
-            extent=[
-                pivot_low.columns.min(), pivot_low.columns.max(),
-                pivot_low.index.min(), pivot_low.index.max()
-            ],
-        )
         if im_l_ref is None:
             im_l_ref = im_l
-
-        ax_l.set_title(f"φ={phi_t:.2f} — Low-strain (Δ from baseline)", fontsize=10, fontweight="bold")
-        ax_l.set_xlabel("Restoration Efficiency (ρ)", fontsize=9)
-        if phi_idx == 0:
-            ax_l.set_ylabel("Transmission Multiplier (mr)", fontsize=9)
 
     cbar_h = fig.colorbar(im_h_ref, ax=axes[0, :], orientation="vertical", fraction=0.02, pad=0.02)
     cbar_h.set_label("Δ Peak I_high (vs baseline)", fontsize=9)
@@ -234,7 +221,7 @@ def peak_infection_heatmaps(df: pd.DataFrame, out_path: str, max_phi_panels: int
     cbar_l.set_label("Δ Peak I_low (vs baseline)", fontsize=9)
 
     fig.savefig(out_path, dpi=200, bbox_inches="tight")
-    print(f"✓ Saved heatmap figure: {out_path}")
+    print(f"✓ Saved heatmap figure with drug trajectories: {out_path}")
     plt.close(fig)
 
 
@@ -328,6 +315,58 @@ def bubble_chart(df: pd.DataFrame, out_path: str) -> None:
     plt.savefig(out_path, dpi=200, bbox_inches="tight")
     print(f"✓ Saved bubble chart figure: {out_path}")
     plt.close()
+
+def compute_R0_v8(phi_t: float, restore: float, mr: float, S_prop: float = 0.99) -> Tuple[float, float]:
+    """
+    Compute R0 for low and high strains under given parameters.
+    
+    R0 = (transmission rate) / (recovery rate)
+    
+    For two-strain model:
+    - R0_low = (c_low * r_low) / sigma_l
+    - R0_high = (c_high * r_high * m_r) / sigma_h
+    
+    Args:
+        phi_t: High-strain transmission multiplier
+        restore: Contact restoration efficiency
+        mr: Transmission multiplier for drug effect
+        S_prop: Proportion susceptible (for transmission scaling)
+    
+    Returns:
+        (R0_low, R0_high)
+    """
+    c_low = float(getattr(P, "contact_rate", 10.0))
+    r_low = float(
+        getattr(P, "transmission_probability_low", getattr(P, "transmission_probability", 0.025))
+    )
+    kappa_base = float(getattr(P, "kappa_base", 1.0))
+    kappa_scale = float(getattr(P, "kappa_scale", 1.0))
+    sigma = float(getattr(P, "sigma", 1.0 / 5.0))
+    
+    # High-strain contact rate with virulence penalty
+    vir_excess_pos = max(0.0, float(phi_t) - 1.0)
+    c_high = c_low * np.exp(-0.5 * vir_excess_pos)
+    
+    # High-strain transmission probability
+    r_high = r_low * float(phi_t)
+    
+    # Recovery rates
+    sigma_l = sigma
+    sigma_h = sigma * (1.0 - vir_excess_pos)  # slowed recovery with virulence
+    sigma_h = max(sigma_h, 1e-8)  # ensure strictly positive
+    
+    # Transmission rates including drug effect
+    beta_l = c_low * r_low * S_prop
+    beta_h = c_high * r_high * S_prop
+    
+    # Apply drug transmission multiplier
+    beta_h_drug = beta_h * float(mr)
+    
+    # R0 values
+    R0_low = beta_l / sigma_l
+    R0_high = beta_h_drug / sigma_h
+    
+    return float(R0_low), float(R0_high)
 
 
 def main(argv: List[str] | None = None) -> int:
@@ -436,6 +475,21 @@ def main(argv: List[str] | None = None) -> int:
     # Optional: keep bubble chart only for sparse grids
     if len(phi_vals) <= 10 and len(restore_vals) <= 10 and len(mr_vals) <= 10:
         bubble_chart(df, "Figures/drug_restoration_sweep/peak_infection_bubble_chart.png")
+
+    # ────────────────────────────────────────────────────────────────
+    # Print R0 values for each phi scenario
+    # ────────────────────────────────────────────────────────────────
+    print("\n" + "=" * 70)
+    print("R0 VALUES BY VIRULENCE (φ_transmission)")
+    print("=" * 70)
+    print(f"{'φ_transmission':<15} {'R0_low':<15} {'R0_high':<15}")
+    print("-" * 70)
+    
+    for phi_t in sorted(set(phi_vals)):
+        R0_low, R0_high = compute_R0_v8(phi_t, restore=0.0, mr=1.0, S_prop=0.99)
+        print(f"{phi_t:<15.3f} {R0_low:<15.4f} {R0_high:<15.4f}")
+    
+    print("=" * 70 + "\n")
 
     print("\n" + "=" * 70)
     print("Done!")
