@@ -17,7 +17,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 from Models.SEIRS_Models import SEIRS_model_v4, SEIRS_model_v5
 from Models import params as model_params
 
@@ -192,7 +192,7 @@ ax2.legend(ncol=2, framealpha=0.7)
 ax2.grid(alpha=0.2)
 
 plt.tight_layout()
-out_path = os.path.join(os.path.dirname(__file__), '../Figures/combined_v4_v5_comparison.png')
+out_path = os.path.join(os.path.dirname(__file__), '../../Figures/Model_v5_exploration/combined_v4_v5_comparison.png')
 plt.savefig(out_path, dpi=600)
 
 print(f"Saved combined figure to {os.path.realpath(out_path)}")

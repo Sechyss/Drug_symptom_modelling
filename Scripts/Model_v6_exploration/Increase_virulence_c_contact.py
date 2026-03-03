@@ -257,7 +257,7 @@ def main():
     # ============================================================
     
     # Create output directory if it doesn't exist
-    outdir = os.path.join(os.path.dirname(__file__), '..', 'Figures')
+    outdir = os.path.join(os.path.dirname(__file__), '..', '..', 'Figures', 'Model_v6_exploration')
     os.makedirs(outdir, exist_ok=True)
     
     # Save in both PNG (for quick viewing) and PDF (for publication)

@@ -7,7 +7,7 @@ from scipy.integrate import odeint
 
 # Workspace paths
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT_DIR = os.path.abspath(os.path.join(THIS_DIR, ".."))
+ROOT_DIR = os.path.abspath(os.path.join(THIS_DIR, "../.."))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
@@ -235,7 +235,7 @@ if xmax > 0:
 plt.tight_layout()
 
 # Save outputs
-out_dir = os.path.join(ROOT_DIR, "Figures")
+out_dir = os.path.join(ROOT_DIR, "Figures", "Model_v3_exploration")
 os.makedirs(out_dir, exist_ok=True)
 fig_path = os.path.join(out_dir, f"Tornado_v3_{METRIC}.png")
 plt.savefig(fig_path, dpi=FIG_DPI)

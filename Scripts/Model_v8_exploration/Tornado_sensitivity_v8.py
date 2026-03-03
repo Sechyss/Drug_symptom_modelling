@@ -7,11 +7,11 @@ from scipy.integrate import odeint
 
 # Workspace paths
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT_DIR = os.path.abspath(os.path.join(THIS_DIR, ".."))
+ROOT_DIR = os.path.abspath(os.path.join(THIS_DIR, "../.."))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
-from Models.SEIRS_Models import SEIRS_model_v7
+from Models.SEIRS_Models import SEIRS_model_v8
 from Models import params as P
 
 
@@ -23,16 +23,14 @@ REL_PERTURB = 0.20         # +/- 20%
 FIG_DPI = 600
 STRAIN_COMPARISON = True   # If True, generate separate plots for high/low strains
 
-# Parameter keys for v7 tornado analysis
-# Note: v7 calculates c_high dynamically from c_low and phi_t,
-# so we don't include contact_rate_high here
+# Parameter keys for v8 tornado analysis
+# Note: v8 uses unified restoration_efficiency instead of separate m_c_drug and drug_contact_restore
 PARAM_KEYS = [
     "contact_rate",
     "transmission_probability_low",
     "phi_transmission",
-    "drug_contact_multiplier",
+    "restoration_efficiency",         # NEW in v8: unified contact restoration
     "drug_transmission_multiplier",
-    "drug_contact_restore",          # NEW in v7
     "birth_rate",
     "death_rate",
     "delta",
@@ -53,7 +51,7 @@ def time_grid():
 
 
 def initial_state_normalized():
-    # v7 state: [S, Eh, Indh, Idh, Rh, El, Indl, Idl, Rl]
+    # v8 state: [S, Eh, Indh, Idh, Rh, El, Indl, Idl, Rl]
     y0 = np.array(
         [
             float(P.S),
@@ -77,13 +75,15 @@ def initial_state_normalized():
 
 def get_base_param_dict():
     # Map script keys -> values in params.py
+    # v8 uses restoration_efficiency; provide sensible default if not in params
+    restoration_eff = getattr(P, "restoration_efficiency", 0.8)
+    
     return {
         "contact_rate": float(P.contact_rate),
         "transmission_probability_low": float(getattr(P, "transmission_probability_low", P.transmission_probability)),
         "phi_transmission": float(P.phi_transmission),
-        "drug_contact_multiplier": float(P.drug_contact_multiplier),
+        "restoration_efficiency": float(restoration_eff),
         "drug_transmission_multiplier": float(P.drug_transmission_multiplier),
-        "drug_contact_restore": float(P.drug_contact_restore),
         "birth_rate": float(P.birth_rate),
         "death_rate": float(P.death_rate),
         "delta": float(P.delta),
@@ -102,9 +102,9 @@ def clamp_param(key, value):
         return max(float(value), 1e-6)  # Avoid exactly zero for rates
     if key in {"kappa_scale", "phi_transmission", "phi_recover"}:
         return max(float(value), 0.0)
-    if key in {"drug_contact_multiplier", "drug_transmission_multiplier", "transmission_probability_low"}:
+    if key in {"drug_transmission_multiplier", "transmission_probability_low"}:
         return max(float(value), 0.0)
-    if key in {"theta", "drug_contact_restore"}:
+    if key in {"theta", "restoration_efficiency"}:
         return float(np.clip(value, 0.0, 1.0))
     if key in {"birth_rate", "death_rate"}:
         return max(float(value), 0.0)
@@ -112,17 +112,16 @@ def clamp_param(key, value):
 
 
 def build_param_tuple(d):
-    # v7 expects (15):
-    # (c_low, r_low, phi_t, m_c_drug, m_r_drug, drug_contact_restore,
+    # v8 expects (14):
+    # (c_low, r_low, phi_t, restoration_efficiency, m_r_drug,
     #  birth_rate, death_rate, delta, kappa_base, kappa_scale, 
     #  phi_recover, sigma, tau, theta)
     return (
         float(d["contact_rate"]),
         float(d["transmission_probability_low"]),
         float(d["phi_transmission"]),
-        float(d["drug_contact_multiplier"]),
+        float(d["restoration_efficiency"]),
         float(d["drug_transmission_multiplier"]),
-        float(d["drug_contact_restore"]),
         float(d["birth_rate"]),
         float(d["death_rate"]),
         float(d["delta"]),
@@ -138,7 +137,7 @@ def build_param_tuple(d):
 def simulate_metric(param_dict, metric):
     t = time_grid()
     y0, N0 = initial_state_normalized()
-    sol = odeint(SEIRS_model_v7, y0, t, args=(build_param_tuple(param_dict),))
+    sol = odeint(SEIRS_model_v8, y0, t, args=(build_param_tuple(param_dict),))
     S, Eh, Indh, Idh, Rh, El, Indl, Idl, Rl = sol.T
 
     I_tot = Indh + Idh + Indl + Idl
@@ -196,7 +195,7 @@ def create_tornado_plot(rows, metric_name, output_suffix=""):
         title_suffix = " (Total infections)"
     
     ax.set_xlabel(f"{metric_label} (vs baseline)")
-    ax.set_title(f"Tornado sensitivity (SEIRS_model_v7){title_suffix}")
+    ax.set_title(f"Tornado sensitivity (SEIRS_model_v8){title_suffix}")
 
     ax.legend(loc="lower right", frameon=True)
 
@@ -208,9 +207,9 @@ def create_tornado_plot(rows, metric_name, output_suffix=""):
     plt.tight_layout()
 
     # Save figure
-    out_dir = os.path.join(ROOT_DIR, "Figures")
+    out_dir = os.path.join(ROOT_DIR, "Figures", "Model_v8_exploration")
     os.makedirs(out_dir, exist_ok=True)
-    fig_path = os.path.join(out_dir, f"Tornado_v7_{metric_name}{output_suffix}.png")
+    fig_path = os.path.join(out_dir, f"Tornado_v8_{metric_name}{output_suffix}.png")
     plt.savefig(fig_path, dpi=FIG_DPI)
     print(f"Saved: {fig_path}")
     plt.close(fig)
@@ -222,7 +221,7 @@ def save_csv_results(rows, metric_name, output_suffix=""):
     """Save tornado results to CSV."""
     csv_dir = os.path.join(ROOT_DIR, "Outputs")
     os.makedirs(csv_dir, exist_ok=True)
-    csv_path = os.path.join(csv_dir, f"Tornado_v7_{metric_name}{output_suffix}.csv")
+    csv_path = os.path.join(csv_dir, f"Tornado_v8_{metric_name}{output_suffix}.csv")
     with open(csv_path, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0].keys()) if rows else [])
         if rows:
@@ -296,7 +295,7 @@ base = get_base_param_dict()
 base = {k: clamp_param(k, v) for k, v in base.items()}
 
 print("="*60)
-print("TORNADO SENSITIVITY ANALYSIS - SEIRS Model v7")
+print("TORNADO SENSITIVITY ANALYSIS - SEIRS Model v8")
 print("="*60)
 
 # Main analysis for specified METRIC
@@ -367,10 +366,10 @@ if STRAIN_COMPARISON and METRIC == "peak_I":
     if xmax_low > 0:
         ax2.set_xlim(-1.05 * xmax_low, 1.05 * xmax_low)
     
-    fig.suptitle("Tornado Sensitivity Comparison (SEIRS_model_v7)", fontsize=14, y=0.995)
+    fig.suptitle("Tornado Sensitivity Comparison (SEIRS_model_v8)", fontsize=14, y=0.995)
     plt.tight_layout()
     
-    comparison_path = os.path.join(ROOT_DIR, "Figures", "Tornado_v7_strain_comparison.png")
+    comparison_path = os.path.join(ROOT_DIR, "Figures", "Model_v8_exploration", "Tornado_v8_strain_comparison.png")
     plt.savefig(comparison_path, dpi=FIG_DPI)
     print(f"Saved: {comparison_path}")
     plt.close(fig)

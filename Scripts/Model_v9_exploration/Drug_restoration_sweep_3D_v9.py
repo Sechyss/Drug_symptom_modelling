@@ -38,7 +38,9 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import TwoSlopeNorm
 
 # allow imports from project root
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.abspath(os.path.join(_THIS_DIR, "../.."))
+sys.path.insert(0, ROOT_DIR)
 from Models.SEIRS_Models import SEIRS_model_v9
 from Models import params as P
 
@@ -314,14 +316,14 @@ def main(argv: List[str] | None = None) -> int:
                 print("✓")
 
     df = pd.DataFrame(results)
-    csv_path = "Results/drug_restoration_sweep_v9.csv"
+    csv_path = os.path.join(ROOT_DIR, "Results", "drug_restoration_sweep_v9.csv")
     os.makedirs(os.path.dirname(csv_path), exist_ok=True)
     df.to_csv(csv_path, index=False)
     print(f"\n✓ Saved CSV: {csv_path}")
 
     peak_infection_heatmaps(
         df,
-        "Figures/drug_restoration_sweep_v9/peak_infection_heatmaps.png",
+        os.path.join(ROOT_DIR, "Figures", "Model_v9_exploration", "drug_restoration_sweep_v9", "peak_infection_heatmaps.png"),
         max_phi_panels=args.max_phi_panels,
     )
 

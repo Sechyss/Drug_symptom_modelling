@@ -7,7 +7,7 @@ from matplotlib.ticker import ScalarFormatter
 
 # Workspace paths
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT_DIR = os.path.abspath(os.path.join(THIS_DIR, ".."))
+ROOT_DIR = os.path.abspath(os.path.join(THIS_DIR, "../.."))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
@@ -198,7 +198,7 @@ axes[1].legend(
 plt.tight_layout()
 
 # Save
-fig_dir = os.path.join(ROOT_DIR, "Figures")
+fig_dir = os.path.join(ROOT_DIR, "Figures", "Model_v5_exploration")
 os.makedirs(fig_dir, exist_ok=True)
 out_path = os.path.join(fig_dir, "Explore_v5_twostrains.png")
 plt.savefig(out_path, dpi=600)
