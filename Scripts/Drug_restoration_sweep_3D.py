@@ -30,7 +30,7 @@ from scipy.integrate import odeint
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.colors import Normalize
+from matplotlib.colors import Normalize, TwoSlopeNorm
 import matplotlib.cm as cm
 
 # allow imports from project root
@@ -144,9 +144,10 @@ def metrics(t: np.ndarray, sim: Dict[str, np.ndarray]) -> Dict[str, float]:
 
 
 def peak_infection_heatmaps(df: pd.DataFrame, out_path: str, max_phi_panels: int = 8) -> None:
-    """2D heatmap slices: (restoration, mr) -> peak_I, faceted by phi.
+    """2D heatmap slices: (restoration, mr) -> delta_peak_I, faceted by phi.
 
     If phi has many values, only evenly spaced slices are plotted.
+    Shows difference from baseline (no drug).
     """
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
@@ -164,10 +165,11 @@ def peak_infection_heatmaps(df: pd.DataFrame, out_path: str, max_phi_panels: int
         2, n_phi, figsize=(4.2 * n_phi, 7.5), squeeze=False, constrained_layout=True
     )
 
-    vmin_high = df["peak_I_high"].min()
-    vmax_high = df["peak_I_high"].max()
-    vmin_low = df["peak_I_low"].min()
-    vmax_low = df["peak_I_low"].max()
+    # Symmetric normalization around zero for deltas
+    max_abs_high = df["delta_peak_I_high"].abs().max()
+    max_abs_low = df["delta_peak_I_low"].abs().max()
+    norm_high = TwoSlopeNorm(vmin=-max_abs_high, vcenter=0.0, vmax=max_abs_high)
+    norm_low = TwoSlopeNorm(vmin=-max_abs_low, vcenter=0.0, vmax=max_abs_low)
 
     im_h_ref = None
     im_l_ref = None
@@ -177,7 +179,7 @@ def peak_infection_heatmaps(df: pd.DataFrame, out_path: str, max_phi_panels: int
 
         ax_h = axes[0, phi_idx]
         pivot_high = df_phi.pivot(
-            index="mr", columns="restoration_efficiency", values="peak_I_high"
+            index="mr", columns="restoration_efficiency", values="delta_peak_I_high"
         ).sort_index().sort_index(axis=1)
 
         im_h = ax_h.imshow(
@@ -185,9 +187,8 @@ def peak_infection_heatmaps(df: pd.DataFrame, out_path: str, max_phi_panels: int
             aspect="auto",
             origin="lower",
             interpolation="nearest",
-            cmap="viridis",
-            vmin=vmin_high,
-            vmax=vmax_high,
+            cmap="coolwarm",
+            norm=norm_high,
             extent=[
                 pivot_high.columns.min(), pivot_high.columns.max(),
                 pivot_high.index.min(), pivot_high.index.max()
@@ -196,14 +197,14 @@ def peak_infection_heatmaps(df: pd.DataFrame, out_path: str, max_phi_panels: int
         if im_h_ref is None:
             im_h_ref = im_h
 
-        ax_h.set_title(f"φ={phi_t:.2f} — High-strain", fontsize=10, fontweight="bold")
+        ax_h.set_title(f"φ={phi_t:.2f} — High-strain (Δ from baseline)", fontsize=10, fontweight="bold")
         ax_h.set_xlabel("Restoration Efficiency (ρ)", fontsize=9)
         if phi_idx == 0:
             ax_h.set_ylabel("Transmission Multiplier (mr)", fontsize=9)
 
         ax_l = axes[1, phi_idx]
         pivot_low = df_phi.pivot(
-            index="mr", columns="restoration_efficiency", values="peak_I_low"
+            index="mr", columns="restoration_efficiency", values="delta_peak_I_low"
         ).sort_index().sort_index(axis=1)
 
         im_l = ax_l.imshow(
@@ -211,9 +212,8 @@ def peak_infection_heatmaps(df: pd.DataFrame, out_path: str, max_phi_panels: int
             aspect="auto",
             origin="lower",
             interpolation="nearest",
-            cmap="plasma",
-            vmin=vmin_low,
-            vmax=vmax_low,
+            cmap="coolwarm",
+            norm=norm_low,
             extent=[
                 pivot_low.columns.min(), pivot_low.columns.max(),
                 pivot_low.index.min(), pivot_low.index.max()
@@ -222,16 +222,16 @@ def peak_infection_heatmaps(df: pd.DataFrame, out_path: str, max_phi_panels: int
         if im_l_ref is None:
             im_l_ref = im_l
 
-        ax_l.set_title(f"φ={phi_t:.2f} — Low-strain", fontsize=10, fontweight="bold")
+        ax_l.set_title(f"φ={phi_t:.2f} — Low-strain (Δ from baseline)", fontsize=10, fontweight="bold")
         ax_l.set_xlabel("Restoration Efficiency (ρ)", fontsize=9)
         if phi_idx == 0:
             ax_l.set_ylabel("Transmission Multiplier (mr)", fontsize=9)
 
     cbar_h = fig.colorbar(im_h_ref, ax=axes[0, :], orientation="vertical", fraction=0.02, pad=0.02)
-    cbar_h.set_label("Peak I_high (fraction)", fontsize=9)
+    cbar_h.set_label("Δ Peak I_high (vs baseline)", fontsize=9)
 
     cbar_l = fig.colorbar(im_l_ref, ax=axes[1, :], orientation="vertical", fraction=0.02, pad=0.02)
-    cbar_l.set_label("Peak I_low (fraction)", fontsize=9)
+    cbar_l.set_label("Δ Peak I_low (vs baseline)", fontsize=9)
 
     fig.savefig(out_path, dpi=200, bbox_inches="tight")
     print(f"✓ Saved heatmap figure: {out_path}")
@@ -239,14 +239,14 @@ def peak_infection_heatmaps(df: pd.DataFrame, out_path: str, max_phi_panels: int
 
 
 def bubble_chart(df: pd.DataFrame, out_path: str) -> None:
-    """Bubble chart with jitter to separate overlapping bubbles."""
+    """Bubble chart with jitter showing delta from baseline."""
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
     fig, axes = plt.subplots(1, 2, figsize=(15, 6))
 
     # Add jitter to separate overlapping points
     np.random.seed(42)
-    jitter_strength = 0.035  # ← INCREASED from 0.02 for better separation
+    jitter_strength = 0.035
     df_jittered = df.copy()
     df_jittered["restoration_efficiency_j"] = df["restoration_efficiency"] + np.random.normal(0, jitter_strength, len(df))
     df_jittered["mr_j"] = df["mr"] + np.random.normal(0, jitter_strength, len(df))
@@ -258,6 +258,10 @@ def bubble_chart(df: pd.DataFrame, out_path: str) -> None:
     size_scale = 500
     sizes = (phi_normalized ** 1.5) * size_scale + 100
 
+    # Symmetric normalization for deltas
+    max_abs_high = df["delta_peak_I_high"].abs().max()
+    max_abs_low = df["delta_peak_I_low"].abs().max()
+
     # ─────────────────────────────────────────────────────────────────
     # HIGH-STRAIN BUBBLE CHART
     # ─────────────────────────────────────────────────────────────────
@@ -265,21 +269,21 @@ def bubble_chart(df: pd.DataFrame, out_path: str) -> None:
         df_jittered["restoration_efficiency_j"],
         df_jittered["mr_j"],
         s=sizes,
-        c=df["peak_I_high"],
-        cmap="viridis",
+        c=df["delta_peak_I_high"],
+        cmap="coolwarm",
         alpha=0.6,
         edgecolors='black',
         linewidth=1.5,
-        vmin=df["peak_I_high"].min(),
-        vmax=df["peak_I_high"].max()
+        vmin=-max_abs_high,
+        vmax=max_abs_high
     )
     axes[0].set_xlabel("Restoration Efficiency (ρ)", fontsize=12, fontweight="bold")
     axes[0].set_ylabel("Transmission Multiplier (mr)", fontsize=12, fontweight="bold")
-    axes[0].set_title("High-Strain Peak Infections\n(Bubble size = Virulence φ)", 
+    axes[0].set_title("High-Strain Δ Peak Infections (vs baseline)\n(Bubble size = Virulence φ)", 
                       fontsize=13, fontweight="bold")
     axes[0].grid(alpha=0.3, linestyle='--')
     cbar1 = plt.colorbar(sc1, ax=axes[0])
-    cbar1.set_label("Peak I_high (fraction)", fontsize=11, fontweight="bold")
+    cbar1.set_label("Δ Peak I_high (vs baseline)", fontsize=11, fontweight="bold")
 
     # ─────────────────────────────────────────────────────────────────
     # LOW-STRAIN BUBBLE CHART
@@ -288,21 +292,21 @@ def bubble_chart(df: pd.DataFrame, out_path: str) -> None:
         df_jittered["restoration_efficiency_j"],
         df_jittered["mr_j"],
         s=sizes,
-        c=df["peak_I_low"],
-        cmap="plasma",
+        c=df["delta_peak_I_low"],
+        cmap="coolwarm",
         alpha=0.6,
         edgecolors='black',
         linewidth=1.5,
-        vmin=df["peak_I_low"].min(),
-        vmax=df["peak_I_low"].max()
+        vmin=-max_abs_low,
+        vmax=max_abs_low
     )
     axes[1].set_xlabel("Restoration Efficiency (ρ)", fontsize=12, fontweight="bold")
     axes[1].set_ylabel("Transmission Multiplier (mr)", fontsize=12, fontweight="bold")
-    axes[1].set_title("Low-Strain Peak Infections\n(Bubble size = Virulence φ)", 
+    axes[1].set_title("Low-Strain Δ Peak Infections (vs baseline)\n(Bubble size = Virulence φ)", 
                       fontsize=13, fontweight="bold")
     axes[1].grid(alpha=0.3, linestyle='--')
     cbar2 = plt.colorbar(sc2, ax=axes[1])
-    cbar2.set_label("Peak I_low (fraction)", fontsize=11, fontweight="bold")
+    cbar2.set_label("Δ Peak I_low (vs baseline)", fontsize=11, fontweight="bold")
 
     # Add legend for bubble sizes
     phi_vals = sorted(df["phi_transmission"].unique())
@@ -378,6 +382,19 @@ def main(argv: List[str] | None = None) -> int:
     print(f"Days: {args.days}, Steps: {args.steps}")
     print("=" * 70)
 
+    # ────────────────────────────────────────────────────────────────
+    # Baseline simulation (no drug: restoration=0, mr=1.0)
+    # ────────────────────────────────────────────────────────────────
+    print("\nRunning baseline simulation (restoration=0.0, mr=1.0)...")
+    baseline_phi = phi_vals[0] if len(phi_vals) > 0 else 1.0
+    t_baseline, sim_baseline = run_sim(baseline_phi, 0.0, 1.0, args.days, args.steps)
+    m_baseline = metrics(t_baseline, sim_baseline)
+    baseline_peak_I_high = m_baseline["peak_I_high"]
+    baseline_peak_I_low = m_baseline["peak_I_low"]
+    print(f"Baseline peak_I_high: {baseline_peak_I_high:.6f}")
+    print(f"Baseline peak_I_low:  {baseline_peak_I_low:.6f}")
+    print("=" * 70)
+
     n_total = len(phi_vals) * len(restore_vals) * len(mr_vals)
     results = []
     count = 0
@@ -397,6 +414,8 @@ def main(argv: List[str] | None = None) -> int:
                     "peak_I_low": m["peak_I_low"],
                     "peak_I_high_total": m["peak_I_high_total"],
                     "peak_I_low_total": m["peak_I_low_total"],
+                    "delta_peak_I_high": m["peak_I_high"] - baseline_peak_I_high,
+                    "delta_peak_I_low": m["peak_I_low"] - baseline_peak_I_low,
                 })
                 print("✓")
 
