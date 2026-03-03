@@ -41,7 +41,9 @@ from matplotlib import cm
 from matplotlib.colors import Normalize
 
 # allow imports from project root
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.abspath(os.path.join(_THIS_DIR, "../.."))
+sys.path.insert(0, ROOT_DIR)
 from Models.SEIRS_Models import SEIRS_model_v7
 from Models import params as P
 
@@ -277,7 +279,7 @@ def main(argv: List[str] | None = None) -> int:
     mc_vals = sorted(set(float(x) for x in mc_vals))
     mr_vals = sorted(set(float(x) for x in mr_vals))
 
-    fig_dir = os.path.join( "Figures", "drug_modifier_phi_sweep")
+    fig_dir = os.path.join(ROOT_DIR, "Figures", "Model_v7_exploration", "drug_modifier_phi_sweep")
     os.makedirs(fig_dir, exist_ok=True)
 
     # Pull shared params for proxy computations

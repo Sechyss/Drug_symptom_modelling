@@ -23,7 +23,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 # allow imports from project root
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.abspath(os.path.join(_THIS_DIR, "../.."))
+sys.path.insert(0, ROOT_DIR)
 from Models.SEIRS_Models import SEIRS_model_v6
 from Models import params as P
 
@@ -140,8 +142,8 @@ def main(argv: List[str] | None = None) -> int:
     # ensure unique + sorted, keep baseline included
     phi_vals = sorted(set([float(x) for x in phi_vals] + [float(args.baseline_phi)]))
 
-    fig_dir = os.path.join("Figures")
-    tab_dir = os.path.join("Tables")
+    fig_dir = os.path.join(ROOT_DIR, "Figures", "Model_v6_exploration")
+    tab_dir = os.path.join(ROOT_DIR, "Tables")
     os.makedirs(fig_dir, exist_ok=True)
     os.makedirs(tab_dir, exist_ok=True)
 

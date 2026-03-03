@@ -7,7 +7,7 @@ from matplotlib.colors import TwoSlopeNorm
 
 # Workspace imports
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT_DIR = os.path.abspath(os.path.join(THIS_DIR, ".."))
+ROOT_DIR = os.path.abspath(os.path.join(THIS_DIR, "../.."))
 if ROOT_DIR not in sys.path:
     sys.path.append(ROOT_DIR)
 
@@ -272,7 +272,7 @@ axes[0].legend(
 plt.tight_layout()
 
 # Save
-fig_dir = os.path.join(ROOT_DIR, "Figures")
+fig_dir = os.path.join(ROOT_DIR, "Figures", "Model_v4_exploration")
 os.makedirs(fig_dir, exist_ok=True)
 out_path = os.path.join(fig_dir, "Explore_v4_singlestrain_vs_baseline.png")
 plt.savefig(out_path, dpi=600)

@@ -16,7 +16,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 from Models.SEIRS_Models import SEIRS_model_v5
 from Models import params as model_params  # shared defaults and initial conditions
 
@@ -110,7 +110,7 @@ ax.set_xlabel('Time (days)')
 ax.set_ylabel('Proportion of Population')
 ax.legend(framealpha=0.7)
 plt.tight_layout()
-plt.savefig('./Figures/twostrains_v5_drug_comparison.png', dpi=300)
+plt.savefig(os.path.join(os.path.dirname(__file__), '../../Figures/Model_v5_exploration/twostrains_v5_drug_comparison.png'), dpi=300)
 
 #%% Print summary metrics
 print('=== Baseline (No Drug) ===')

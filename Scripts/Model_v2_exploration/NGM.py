@@ -4,8 +4,7 @@ import numpy as np
 from numpy.linalg import eigvals
 
 # Add parent directory to path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from Models import params as model_params
 
 """

@@ -35,7 +35,9 @@ import matplotlib.cm as cm
 from matplotlib.patches import FancyArrowPatch
 
 # allow imports from project root
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.abspath(os.path.join(_THIS_DIR, "../.."))
+sys.path.insert(0, ROOT_DIR)
 from Models.SEIRS_Models import SEIRS_model_v8
 from Models import params as P
 
@@ -459,7 +461,7 @@ def main(argv: List[str] | None = None) -> int:
                 print("✓")
 
     df = pd.DataFrame(results)
-    csv_path = "Results/drug_restoration_sweep.csv"
+    csv_path = os.path.join(ROOT_DIR, "Results", "drug_restoration_sweep.csv")
     os.makedirs(os.path.dirname(csv_path), exist_ok=True)
     df.to_csv(csv_path, index=False)
     print(f"\n✓ Saved CSV: {csv_path}")
@@ -468,13 +470,13 @@ def main(argv: List[str] | None = None) -> int:
 
     peak_infection_heatmaps(
         df,
-        "Figures/drug_restoration_sweep/peak_infection_heatmaps.png",
+        os.path.join(ROOT_DIR, "Figures", "Model_v8_exploration", "drug_restoration_sweep", "peak_infection_heatmaps.png"),
         max_phi_panels=args.max_phi_panels,
     )
 
     # Optional: keep bubble chart only for sparse grids
     if len(phi_vals) <= 10 and len(restore_vals) <= 10 and len(mr_vals) <= 10:
-        bubble_chart(df, "Figures/drug_restoration_sweep/peak_infection_bubble_chart.png")
+        bubble_chart(df, os.path.join(ROOT_DIR, "Figures", "Model_v8_exploration", "drug_restoration_sweep", "peak_infection_bubble_chart.png"))
 
     # ────────────────────────────────────────────────────────────────
     # Print R0 values for each phi scenario
