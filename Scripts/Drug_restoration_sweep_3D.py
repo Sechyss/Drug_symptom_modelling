@@ -143,24 +143,27 @@ def metrics(t: np.ndarray, sim: Dict[str, np.ndarray]) -> Dict[str, float]:
     }
 
 
-def peak_infection_heatmaps(df: pd.DataFrame, out_path: str) -> None:
-    """Create 2D heatmaps: (restoration, mr) → peak_I, faceted by phi.
+def peak_infection_heatmaps(df: pd.DataFrame, out_path: str, max_phi_panels: int = 8) -> None:
+    """2D heatmap slices: (restoration, mr) -> peak_I, faceted by phi.
 
-    Layout: 2 rows × n_phi columns
-    - Row 1: High-strain peaks
-    - Row 2: Low-strain peaks
-    Each column is a different phi value.
+    If phi has many values, only evenly spaced slices are plotted.
     """
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
-    phi_vals = sorted(df["phi_transmission"].unique())
+    phi_all = sorted(df["phi_transmission"].unique())
+    if len(phi_all) > max_phi_panels:
+        idx = np.linspace(0, len(phi_all) - 1, max_phi_panels).astype(int)
+        phi_vals = [phi_all[i] for i in idx]
+        print(f"ℹ Plotting {len(phi_vals)} phi slices out of {len(phi_all)} total.")
+    else:
+        phi_vals = phi_all
+
     n_phi = len(phi_vals)
 
     fig, axes = plt.subplots(
         2, n_phi, figsize=(4.2 * n_phi, 7.5), squeeze=False, constrained_layout=True
     )
 
-    # Global scales for comparability across phi panels
     vmin_high = df["peak_I_high"].min()
     vmax_high = df["peak_I_high"].max()
     vmin_low = df["peak_I_low"].min()
@@ -170,14 +173,11 @@ def peak_infection_heatmaps(df: pd.DataFrame, out_path: str) -> None:
     im_l_ref = None
 
     for phi_idx, phi_t in enumerate(phi_vals):
-        df_phi = df[df["phi_transmission"] == phi_t]
+        df_phi = df[np.isclose(df["phi_transmission"], phi_t)]
 
-        # High-strain panel
         ax_h = axes[0, phi_idx]
         pivot_high = df_phi.pivot(
-            index="mr",
-            columns="restoration_efficiency",
-            values="peak_I_high"
+            index="mr", columns="restoration_efficiency", values="peak_I_high"
         ).sort_index().sort_index(axis=1)
 
         im_h = ax_h.imshow(
@@ -191,25 +191,19 @@ def peak_infection_heatmaps(df: pd.DataFrame, out_path: str) -> None:
             extent=[
                 pivot_high.columns.min(), pivot_high.columns.max(),
                 pivot_high.index.min(), pivot_high.index.max()
-            ]
+            ],
         )
         if im_h_ref is None:
             im_h_ref = im_h
 
-        ax_h.set_title(f"φ={phi_t:.1f} — High-strain", fontsize=11, fontweight="bold")
-        ax_h.set_xlabel("Restoration Efficiency (ρ)", fontsize=10)
+        ax_h.set_title(f"φ={phi_t:.2f} — High-strain", fontsize=10, fontweight="bold")
+        ax_h.set_xlabel("Restoration Efficiency (ρ)", fontsize=9)
         if phi_idx == 0:
-            ax_h.set_ylabel("Transmission Multiplier (mr)", fontsize=10)
+            ax_h.set_ylabel("Transmission Multiplier (mr)", fontsize=9)
 
-        ax_h.set_xticks(pivot_high.columns.values)
-        ax_h.set_yticks(pivot_high.index.values)
-
-        # Low-strain panel
         ax_l = axes[1, phi_idx]
         pivot_low = df_phi.pivot(
-            index="mr",
-            columns="restoration_efficiency",
-            values="peak_I_low"
+            index="mr", columns="restoration_efficiency", values="peak_I_low"
         ).sort_index().sort_index(axis=1)
 
         im_l = ax_l.imshow(
@@ -223,32 +217,22 @@ def peak_infection_heatmaps(df: pd.DataFrame, out_path: str) -> None:
             extent=[
                 pivot_low.columns.min(), pivot_low.columns.max(),
                 pivot_low.index.min(), pivot_low.index.max()
-            ]
+            ],
         )
         if im_l_ref is None:
             im_l_ref = im_l
 
-        ax_l.set_title(f"φ={phi_t:.1f} — Low-strain", fontsize=11, fontweight="bold")
-        ax_l.set_xlabel("Restoration Efficiency (ρ)", fontsize=10)
+        ax_l.set_title(f"φ={phi_t:.2f} — Low-strain", fontsize=10, fontweight="bold")
+        ax_l.set_xlabel("Restoration Efficiency (ρ)", fontsize=9)
         if phi_idx == 0:
-            ax_l.set_ylabel("Transmission Multiplier (mr)", fontsize=10)
+            ax_l.set_ylabel("Transmission Multiplier (mr)", fontsize=9)
 
-        ax_l.set_xticks(pivot_low.columns.values)
-        ax_l.set_yticks(pivot_low.index.values)
+    cbar_h = fig.colorbar(im_h_ref, ax=axes[0, :], orientation="vertical", fraction=0.02, pad=0.02)
+    cbar_h.set_label("Peak I_high (fraction)", fontsize=9)
 
-    # Shared colorbar for top row
-    cbar_h = fig.colorbar(
-        im_h_ref, ax=axes[0, :], orientation="vertical", fraction=0.02, pad=0.02
-    )
-    cbar_h.set_label("Peak I_high (fraction)", fontsize=10)
+    cbar_l = fig.colorbar(im_l_ref, ax=axes[1, :], orientation="vertical", fraction=0.02, pad=0.02)
+    cbar_l.set_label("Peak I_low (fraction)", fontsize=9)
 
-    # Shared colorbar for bottom row
-    cbar_l = fig.colorbar(
-        im_l_ref, ax=axes[1, :], orientation="vertical", fraction=0.02, pad=0.02
-    )
-    cbar_l.set_label("Peak I_low (fraction)", fontsize=10)
-
-    # Remove tight_layout() to prevent warning
     fig.savefig(out_path, dpi=200, bbox_inches="tight")
     print(f"✓ Saved heatmap figure: {out_path}")
     plt.close(fig)
@@ -346,70 +330,98 @@ def main(argv: List[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Parameter sweep: peak infections vs (restoration_efficiency, mr, phi)"
     )
-    parser.add_argument("--phi", type=float, nargs="+", default=[1.0, 1.2, 1.5, 1.8, 2.2],
-                       help="phi_transmission values")
-    parser.add_argument("--restore", type=float, nargs="+", default=[0.0, 0.3, 0.6, 0.9],
-                       help="restoration_efficiency values")
-    parser.add_argument("--mr", type=float, nargs="+", default=[0.5, 0.7, 1.0],
-                       help="drug_transmission_multiplier values")
-    parser.add_argument("--days", type=int, default=365, help="simulation duration")
-    parser.add_argument("--steps", type=int, default=365, help="number of time steps")
-    
+
+    # Existing list mode
+    parser.add_argument("--phi", type=float, nargs="+", default=[1.0, 1.2, 1.5, 1.8, 2.2])
+    parser.add_argument("--restore", type=float, nargs="+", default=[0.0, 0.3, 0.6, 0.9])
+    parser.add_argument("--mr", type=float, nargs="+", default=[0.5, 0.7, 1.0])
+
+    # New range mode (Option 1)
+    parser.add_argument("--phi-min", type=float, default=None)
+    parser.add_argument("--phi-max", type=float, default=None)
+    parser.add_argument("--n-phi", type=int, default=9)
+
+    parser.add_argument("--restore-min", type=float, default=None)
+    parser.add_argument("--restore-max", type=float, default=None)
+    parser.add_argument("--n-restore", type=int, default=9)
+
+    parser.add_argument("--mr-min", type=float, default=None)
+    parser.add_argument("--mr-max", type=float, default=None)
+    parser.add_argument("--n-mr", type=int, default=9)
+
+    parser.add_argument("--max-phi-panels", type=int, default=8)
+    parser.add_argument("--days", type=int, default=365)
+    parser.add_argument("--steps", type=int, default=365)
+
     args = parser.parse_args(argv)
-    
+
     print("=" * 70)
     print("SEIRS v8: Unified Contact Restoration Sweep (2D Heatmaps)")
     print("=" * 70)
-    print(f"φ_transmission: {args.phi}")
-    print(f"restoration_efficiency (ρ): {args.restore}")
-    print(f"mr (transmission reduction): {args.mr}")
+
+    phi_vals = (
+        np.linspace(args.phi_min, args.phi_max, args.n_phi).tolist()
+        if args.phi_min is not None and args.phi_max is not None else args.phi
+    )
+    restore_vals = (
+        np.linspace(args.restore_min, args.restore_max, args.n_restore).tolist()
+        if args.restore_min is not None and args.restore_max is not None else args.restore
+    )
+    mr_vals = (
+        np.linspace(args.mr_min, args.mr_max, args.n_mr).tolist()
+        if args.mr_min is not None and args.mr_max is not None else args.mr
+    )
+
+    print(f"φ_transmission: {phi_vals}")
+    print(f"restoration_efficiency (ρ): {restore_vals}")
+    print(f"mr (transmission reduction): {mr_vals}")
     print(f"Days: {args.days}, Steps: {args.steps}")
     print("=" * 70)
-    print("NOTE: All results in FRACTIONS of population (normalized initial conditions)")
-    print("=" * 70)
-    
-    n_total = len(args.phi) * len(args.restore) * len(args.mr)
+
+    n_total = len(phi_vals) * len(restore_vals) * len(mr_vals)
     results = []
-    
     count = 0
-    for phi_t in args.phi:
-        for restore in args.restore:
-            for mr in args.mr:
+
+    for phi_t in phi_vals:
+        for restore in restore_vals:
+            for mr in mr_vals:
                 count += 1
-                print(f"[{count}/{n_total}] φ={phi_t:.2f}, ρ={restore:.2f}, mr={mr:.2f}...", end=" ")
-                
+                print(f"[{count}/{n_total}] φ={phi_t:.3f}, ρ={restore:.3f}, mr={mr:.3f}...", end=" ")
                 t, sim = run_sim(phi_t, restore, mr, args.days, args.steps)
                 m = metrics(t, sim)
-                
                 results.append({
-                    "phi_transmission": phi_t,
-                    "restoration_efficiency": restore,
-                    "mr": mr,
+                    "phi_transmission": float(phi_t),
+                    "restoration_efficiency": float(restore),
+                    "mr": float(mr),
                     "peak_I_high": m["peak_I_high"],
                     "peak_I_low": m["peak_I_low"],
                     "peak_I_high_total": m["peak_I_high_total"],
                     "peak_I_low_total": m["peak_I_low_total"],
                 })
                 print("✓")
-    
+
     df = pd.DataFrame(results)
     csv_path = "Results/drug_restoration_sweep.csv"
     os.makedirs(os.path.dirname(csv_path), exist_ok=True)
     df.to_csv(csv_path, index=False)
     print(f"\n✓ Saved CSV: {csv_path}")
-    print("\nFirst 10 rows (all values are fractions of population):")
+    print("\nFirst 10 rows:")
     print(df.head(10))
-    
-    fig_path_heatmap = "Figures/drug_restoration_sweep/peak_infection_heatmaps.png"
-    peak_infection_heatmaps(df, fig_path_heatmap)
-    
-    fig_path_bubble = "Figures/drug_restoration_sweep/peak_infection_bubble_chart.png"
-    bubble_chart(df, fig_path_bubble)
-    
+
+    peak_infection_heatmaps(
+        df,
+        "Figures/drug_restoration_sweep/peak_infection_heatmaps.png",
+        max_phi_panels=args.max_phi_panels,
+    )
+
+    # Optional: keep bubble chart only for sparse grids
+    if len(phi_vals) <= 10 and len(restore_vals) <= 10 and len(mr_vals) <= 10:
+        bubble_chart(df, "Figures/drug_restoration_sweep/peak_infection_bubble_chart.png")
+
     print("\n" + "=" * 70)
-    print("Done! All figures generated successfully.")
+    print("Done!")
     print("=" * 70)
-    
+
     return 0
 
 

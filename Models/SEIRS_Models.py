@@ -978,7 +978,7 @@ def SEIRS_model_v8(y, t, params):
       restoration_efficiency (ρ) = degree to which drug restores contacts lost to symptoms
         - ρ = 0: no symptom masking (sick stay home regardless of treatment)
         - ρ = 1: complete symptom masking (treated feel/appear healthy)
-        - ρ = 0.8 (typical): substantial but not complete restoration
+        - ρ = 0.5 (typical): substantial but not complete restoration
         
     KEPT:
       - m_r_drug: transmission probability modifier (antivirals reduce viral load)
