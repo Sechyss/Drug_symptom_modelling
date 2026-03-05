@@ -1133,6 +1133,124 @@ def SEIRS_model_v8(y, t, params):
     return np.array([dSdt, dEhdt, dIndhdt, dIdhdt, dRhdt, dEldt, dIndldt, dIdldt, dRldt])
 
 
+def SEIRS_model_v9_singlestrain(y, t, params):
+    """
+
+    ═══════════════════════════════════════════════════════════════════════════
+    KEY DESIGN PRINCIPLE
+    ═══════════════════════════════════════════════════════════════════════════
+    
+    PROBLEM WITH v8:
+      High virulence reduces contacts: c_high = c_low × exp(-α(φ-1)) < c_low
+      This creates a FITNESS COST even without drug:
+        β_h = c_high × r × φ  vs  β_l = c_low × r
+        R0_h = β_h / σ  vs  R0_l = β_l / σ
+        
+      High virulence has both:
+        - Contact penalty (reduced c)
+        - Transmission boost (φ multiplier)
+      Net effect: which dominates? Depends on parameters.
+    
+    SOLUTION IN v9:
+      Keep the contact penalty (biological realism: sick stay home)
+      BUT scale recovery rate to maintain R0 balance:
+        
+        σ_h = σ × (β_h / β_l)
+        
+      This ensures:
+        R0_h = β_h / σ_h = β_h / (σ × β_h/β_l) = β_l / σ = R0_l ✓
+      
+    MATHEMATICAL CONSEQUENCE:
+      R0 is EQUAL across strains at baseline (no drug)
+      This makes high virulence FITNESS-NEUTRAL without treatment
+      
+      When drug is applied:
+      - Restoration increases β_h (restores lost contacts)
+      - But σ_h stays fixed (not affected by drug)
+      - Result: R0_h increases MORE than R0_l (if restoration > transmission reduction)
+      - Selection pressure for high virulence when drug is used!
+    
+    ═══════════════════════════════════════════════════════════════════════════
+    BIOLOGICAL INTERPRETATION
+    ═══════════════════════════════════════════════════════════════════════════
+    
+    High-virulence strain:
+      - Causes severe symptoms (fever, cough, fatigue)
+      - Sick individuals reduce contacts naturally (stay home)
+      - BUT their immune system responds more aggressively
+      - Faster immune response = faster pathogen clearance
+      - Shorter infectious period (higher σ)
+    
+    This balances the transmission advantage (φ) with the contact penalty!
+    
+    ═══════════════════════════════════════════════════════════════════════════
+    PARAMETERS (13 total) - same as v8
+    ═══════════════════════════════════════════════════════════════════════════
+    (c_low, r_low, phi_t,
+     restoration_efficiency, m_r_drug,
+     birth_rate, death_rate, delta,
+     kappa_base, kappa_scale,
+     sigma, tau, theta)
+    
+    No new parameters! Only the model logic changes.
+    
+    ═══════════════════════════════════════════════════════════════════════════
+    """
+    # ─────────────────────────────────────────────────────────────────────────
+    # STEP 1: Sanitize state variables
+    # ─────────────────────────────────────────────────────────────────────────
+    y = np.maximum(np.asarray(y, dtype=float), 0.0)
+    S, El, Indl, Idl, Rl = y
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # STEP 2: Validate and unpack parameters
+    # ─────────────────────────────────────────────────────────────────────────
+    if len(params) != 9:
+        raise ValueError(
+            "SEIRS_model_v9 expects 9 params: "
+            "(c_low, r_low, m_r_drug, "
+            "birth_rate, death_rate, delta, sigma, tau, theta)"
+        )
+
+    (c_low, r_low, m_r_drug,
+     birth_rate, death_rate, delta, sigma, tau, theta) = params
+    
+    beta_l_u = c_low * r_low
+    beta_l_t = c_low * (r_low * m_r_drug)
+  
+    sigma_l = sigma
+    
+    # Ensure strictly positive recovery rates
+    sigma_l = max(sigma_l, 1e-8)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # STEP 7: Detection/treatment probabilities (SAME AS v8)
+    # ─────────────────────────────────────────────────────────────────────────
+    theta_low = theta
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # STEP 8: Forces of Infection
+    # ─────────────────────────────────────────────────────────────────────────
+    
+    B_l = beta_l_u * Indl + beta_l_t * Idl
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # STEP 9: ODEs
+    # ─────────────────────────────────────────────────────────────────────────
+    
+    dSdt = birth_rate - (B_l) * S + delta * (Rl) - death_rate * S
+    
+    dEldt = B_l * S - tau * El - death_rate * El
+
+    dIndldt = (1.0 - theta_low) * tau * El - sigma_l * Indl - death_rate * Indl
+    
+    dIdldt = theta_low * tau * El - sigma_l * Idl - death_rate * Idl
+
+    dRldt = sigma_l * (Indl + Idl) - delta * Rl - death_rate * Rl
+
+    return np.array([dSdt, dEldt, dIndldt, dIdldt, dRldt])
+
+
 def SEIRS_model_v9(y, t, params):
     """
     v9: Virulence penalty on contacts KEPT, but recovery rate scales with beta
