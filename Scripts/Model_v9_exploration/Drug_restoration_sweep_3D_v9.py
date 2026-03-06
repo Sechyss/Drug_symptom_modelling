@@ -346,7 +346,7 @@ def main(argv: List[str] | None = None) -> int:
 
     peak_infection_heatmaps(
         df,
-        os.path.join(ROOT_DIR, "Figures", "Model_v9_exploration", "drug_restoration_sweep_v9", "peak_infection_heatmaps.svg"),
+        os.path.join(ROOT_DIR, "Figures", "Model_v9_exploration", "peak_infection_heatmaps.svg"),
         max_phi_panels=args.max_phi_panels,
     )
 
