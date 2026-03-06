@@ -128,7 +128,13 @@ def metrics(t: np.ndarray, sim: Dict[str, np.ndarray]) -> Dict[str, float]:
 
 
 def peak_infection_heatmaps(df: pd.DataFrame, out_path: str, max_phi_panels: int = 8) -> None:
-    """2D heatmaps faceted by phi, showing delta from baseline."""
+    """2D heatmaps faceted by phi, showing delta from baseline.
+    
+    Layout:
+    - Left column: Low-strain heatmaps (one per phi value)
+    - Right column: High-strain heatmaps (one per phi value)
+    - Horizontal colorbars at bottom
+    """
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
     phi_all = sorted(df["phi_transmission"].unique())
@@ -138,7 +144,8 @@ def peak_infection_heatmaps(df: pd.DataFrame, out_path: str, max_phi_panels: int
         phi_vals = phi_all
 
     n_phi = len(phi_vals)
-    fig, axes = plt.subplots(2, n_phi, figsize=(4.2 * n_phi, 7.5), squeeze=False, constrained_layout=True)
+    # Layout: n_phi rows x 2 columns (low virulence left, high virulence right)
+    fig, axes = plt.subplots(n_phi, 2, figsize=(12, 4.5 * n_phi), squeeze=False)
 
     # Symmetric normalization for deltas
     max_abs_high = df["delta_peak_I_high"].abs().max()
@@ -164,46 +171,55 @@ def peak_infection_heatmaps(df: pd.DataFrame, out_path: str, max_phi_panels: int
             index="mr", columns="restoration_efficiency", values="delta_peak_I_low", sort=True
         )
 
-        # High-strain heatmap
-        im_h = axes[0, phi_idx].imshow(
-            pivot_high.values, origin="lower", aspect="auto", cmap="coolwarm", norm=norm_high,
-            extent=[restoration_min, restoration_max, mr_min, mr_max]
-        )
-        axes[0, phi_idx].set_title(f"High-strain (φ={phi_t:.2f})")
-        axes[0, phi_idx].set_xlabel("Restoration efficiency ρ")
-        axes[0, phi_idx].set_ylabel("Transmission multiplier m_r")
-
-        # Low-strain heatmap
-        im_l = axes[1, phi_idx].imshow(
+        # Low-strain heatmap (left column, col=0)
+        im_l = axes[phi_idx, 0].imshow(
             pivot_low.values, origin="lower", aspect="auto", cmap="coolwarm", norm=norm_low,
             extent=[restoration_min, restoration_max, mr_min, mr_max]
         )
-        axes[1, phi_idx].set_title(f"Low-strain (φ={phi_t:.2f})")
-        axes[1, phi_idx].set_xlabel("Restoration efficiency ρ")
-        axes[1, phi_idx].set_ylabel("Transmission multiplier m_r")
+        axes[phi_idx, 0].set_title(f"Low-strain (φ={phi_t:.2f})", fontsize=11, fontweight="bold", pad=15)
+        axes[phi_idx, 0].set_xlabel("Restoration efficiency ρ", fontsize=10)
+        axes[phi_idx, 0].set_ylabel("Transmission multiplier m_r", fontsize=10)
 
-        if im_h_ref is None:
-            im_h_ref = im_h
+        # High-strain heatmap (right column, col=1)
+        im_h = axes[phi_idx, 1].imshow(
+            pivot_high.values, origin="lower", aspect="auto", cmap="coolwarm", norm=norm_high,
+            extent=[restoration_min, restoration_max, mr_min, mr_max]
+        )
+        axes[phi_idx, 1].set_title(f"High-strain (φ={phi_t:.2f})", fontsize=11, fontweight="bold", pad=15)
+        axes[phi_idx, 1].set_xlabel("Restoration efficiency ρ", fontsize=10)
+        axes[phi_idx, 1].set_ylabel("Transmission multiplier m_r", fontsize=10)
+
         if im_l_ref is None:
             im_l_ref = im_l
+        if im_h_ref is None:
+            im_h_ref = im_h
 
-    cbar_h = fig.colorbar(im_h_ref, ax=axes[0, :], orientation="vertical", fraction=0.02, pad=0.02)
-    cbar_h.set_label("Δ Peak I_high (vs baseline)", fontsize=9)
-
-    cbar_l = fig.colorbar(im_l_ref, ax=axes[1, :], orientation="vertical", fraction=0.02, pad=0.02)
-    cbar_l.set_label("Δ Peak I_low (vs baseline)", fontsize=9)
+    # Add horizontal colorbars at the bottom
+    fig.subplots_adjust(bottom=0.12, hspace=0.4)
+    
+    # Colorbar for low-strain
+    cbar_ax_l = fig.add_axes([0.15, 0.06, 0.3, 0.02])
+    cbar_l = fig.colorbar(im_l_ref, cax=cbar_ax_l, orientation="horizontal")
+    cbar_l.set_label("Δ Peak I_low (vs baseline)", fontsize=10)
+    
+    # Colorbar for high-strain
+    cbar_ax_h = fig.add_axes([0.55, 0.06, 0.3, 0.02])
+    cbar_h = fig.colorbar(im_h_ref, cax=cbar_ax_h, orientation="horizontal")
+    cbar_h.set_label("Δ Peak I_high (vs baseline)", fontsize=10)
 
     fig.savefig(out_path, dpi=200, bbox_inches="tight")
     print(f"✓ Saved heatmap: {out_path}")
     plt.close(fig)
 
 
-def compute_R0_and_beta_v9(phi_t: float, restore: float, mr: float, S_prop: float = 0.99) -> Tuple[float, float, float, float]:
+def compute_R0_and_beta_v9(
+    phi_t: float, restore: float, mr: float, S_prop: float = 0.99
+) -> Tuple[float, float, float, float, float, float]:
     """
     Compute R0 and β (transmission rate) for v9 model.
     
     Returns:
-        (R0_low, R0_high, beta_low, beta_high)
+        (R0_low, R0_high, beta_low, beta_high, sigma_low, sigma_high)
     """
     c_low = float(getattr(P, "contact_rate", 10.0))
     r_low = float(
@@ -233,7 +249,14 @@ def compute_R0_and_beta_v9(phi_t: float, restore: float, mr: float, S_prop: floa
     R0_low = beta_l / sigma_l
     R0_high = beta_h / sigma_h
     
-    return float(R0_low), float(R0_high), float(beta_l), float(beta_h)
+    return (
+        float(R0_low),
+        float(R0_high),
+        float(beta_l),
+        float(beta_h),
+        float(sigma_l),
+        float(sigma_h),
+    )
 
 
 def main(argv: List[str] | None = None) -> int:
@@ -331,13 +354,26 @@ def main(argv: List[str] | None = None) -> int:
     print("\n" + "=" * 90)
     print("R0 AND TRANSMISSION RATES BY VIRULENCE (baseline: ρ=0.0, m_r=1.0)")
     print("=" * 90)
-    print(f"{'φ_trans':<12} {'β_low':<15} {'β_high':<15} {'R0_low':<12} {'R0_high':<12}")
+    print(
+        f"{'φ_trans':<12} {'β_low':<15} {'β_high':<15} "
+        f"{'σ_low':<12} {'σ_high':<12} {'R0_low':<12} {'R0_high':<12}"
+    )
     print("-" * 90)
     
     for phi_t in sorted(set(phi_vals)):
-        R0_low, R0_high, beta_low, beta_high = compute_R0_and_beta_v9(phi_t, restore=0.0, mr=1.0, S_prop=0.99)
+        (
+            R0_low,
+            R0_high,
+            beta_low,
+            beta_high,
+            sigma_low,
+            sigma_high,
+        ) = compute_R0_and_beta_v9(phi_t, restore=0.0, mr=1.0, S_prop=0.99)
         equal_str = "✓ Yes" if abs(R0_high - R0_low) < 0.01 else "✗ No"
-        print(f"{phi_t:<12.3f} {beta_low:<15.6f} {beta_high:<15.6f} {R0_low:<12.4f} {R0_high:<12.4f} {equal_str:<10}")
+        print(
+            f"{phi_t:<12.3f} {beta_low:<15.6f} {beta_high:<15.6f} "
+            f"{sigma_low:<12.6f} {sigma_high:<12.6f} {R0_low:<12.4f} {R0_high:<12.4f} {equal_str:<10}"
+        )
     
     print("=" * 90 + "\n")
 
