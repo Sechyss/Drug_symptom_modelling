@@ -226,7 +226,7 @@ out_base = os.path.join(
 )
 
 plt.savefig(out_base + ".png", dpi=700)  # high-res raster
-plt.savefig(out_base + ".pdf")           # vector for publication
+plt.savefig(out_base + ".svg")           # vector for publication
 
 print(f"\nSaved figure to {os.path.realpath(out_base + '.png')}")
-print(f"Saved vector figure to {os.path.realpath(out_base + '.pdf')}")
+print(f"Saved vector figure to {os.path.realpath(out_base + '.svg')}")
