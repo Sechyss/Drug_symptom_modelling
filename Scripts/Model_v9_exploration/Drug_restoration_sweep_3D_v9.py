@@ -9,7 +9,7 @@ This script tests model v9 where:
 
 Outputs:
   Results/drug_restoration_sweep_v9.csv
-  Figures/drug_restoration_sweep_v9/peak_infection_heatmaps.png
+    Figures/Model_v9_exploration/peak_infection_heatmaps.svg
 
 Run from repo root:
     python Scripts/Drug_restoration_sweep_3D_v9.py \
@@ -73,14 +73,11 @@ def initial_conditions(normalize: bool = True) -> np.ndarray:
 
 
 def params_tuple_v9(phi_t: float, restore: float, mr: float) -> Tuple[float, ...]:
-    """Build parameter vector for SEIRS_model_v9 (13 params)."""
+    """Build parameter vector for SEIRS_model_v9 (10 params)."""
     c_low = float(getattr(P, "contact_rate", 10.0))
     r_low = float(
         getattr(P, "transmission_probability_low", getattr(P, "transmission_probability", 0.025))
     )
-    birth_rate = float(getattr(P, "birth_rate", 0.0))
-    death_rate = float(getattr(P, "death_rate", 0.0))
-    delta = float(getattr(P, "delta", 0.0))
     kappa_base = float(getattr(P, "kappa_base", 1.0))
     kappa_scale = float(getattr(P, "kappa_scale", 1.0))
     sigma = float(getattr(P, "sigma", 1.0 / 5.0))
@@ -90,7 +87,6 @@ def params_tuple_v9(phi_t: float, restore: float, mr: float) -> Tuple[float, ...
     return (
         c_low, r_low, float(phi_t),
         float(restore), float(mr),
-        birth_rate, death_rate, delta,
         kappa_base, kappa_scale,
         sigma, tau, theta
     )
@@ -114,14 +110,12 @@ def run_sim(phi_t: float, restore: float, mr: float, days: int, steps: int) -> T
 
 def metrics(t: np.ndarray, sim: Dict[str, np.ndarray]) -> Dict[str, float]:
     """Extract peak infection metrics."""
-    peak_Ih = float(np.nanmax(sim["Idh"])) if len(sim["Idh"]) > 0 else 0.0
-    peak_Il = float(np.nanmax(sim["Idl"])) if len(sim["Idl"]) > 0 else 0.0
     peak_Ih_total = float(np.nanmax(sim["Indh"] + sim["Idh"])) if len(sim["Indh"]) > 0 else 0.0
     peak_Il_total = float(np.nanmax(sim["Indl"] + sim["Idl"])) if len(sim["Indl"]) > 0 else 0.0
 
     return {
-        "peak_I_high": peak_Ih,
-        "peak_I_low": peak_Il,
+        "peak_I_high": peak_Ih_total,
+        "peak_I_low": peak_Il_total,
         "peak_I_high_total": peak_Ih_total,
         "peak_I_low_total": peak_Il_total,
     }
@@ -304,15 +298,20 @@ def main(argv: List[str] | None = None) -> int:
     print(f"Days: {args.days}, Steps: {args.steps}")
     print("=" * 70)
 
-    # Baseline simulation
-    print("\nRunning baseline simulation (ρ=0.0, m_r=1.0)...")
-    baseline_phi = phi_vals[0] if len(phi_vals) > 0 else 1.0
-    t_baseline, sim_baseline = run_sim(baseline_phi, 0.0, 1.0, args.days, args.steps)
-    m_baseline = metrics(t_baseline, sim_baseline)
-    baseline_peak_I_high = m_baseline["peak_I_high"]
-    baseline_peak_I_low = m_baseline["peak_I_low"]
-    print(f"Baseline peak_I_high: {baseline_peak_I_high:.6f}")
-    print(f"Baseline peak_I_low:  {baseline_peak_I_low:.6f}")
+    # Baseline simulation per phi for consistent within-phi deltas
+    print("\nRunning baseline simulations by phi (ρ=0.0, m_r=1.0)...")
+    baselines_by_phi: Dict[float, Dict[str, float]] = {}
+    for phi_t in phi_vals:
+        t_baseline, sim_baseline = run_sim(phi_t, 0.0, 1.0, args.days, args.steps)
+        m_baseline = metrics(t_baseline, sim_baseline)
+        baselines_by_phi[float(phi_t)] = {
+            "peak_I_high": m_baseline["peak_I_high"],
+            "peak_I_low": m_baseline["peak_I_low"],
+        }
+        print(
+            f"  phi={phi_t:.3f} -> baseline peak_I_high={m_baseline['peak_I_high']:.6f}, "
+            f"peak_I_low={m_baseline['peak_I_low']:.6f}"
+        )
     print("=" * 70)
 
     # Parameter sweep
@@ -327,14 +326,15 @@ def main(argv: List[str] | None = None) -> int:
                 print(f"[{count}/{n_total}] φ={phi_t:.3f}, ρ={restore:.3f}, m_r={mr:.3f}...", end=" ")
                 t, sim = run_sim(phi_t, restore, mr, args.days, args.steps)
                 m = metrics(t, sim)
+                baseline = baselines_by_phi[float(phi_t)]
                 results.append({
                     "phi_transmission": float(phi_t),
                     "restoration_efficiency": float(restore),
                     "mr": float(mr),
                     "peak_I_high": m["peak_I_high"],
                     "peak_I_low": m["peak_I_low"],
-                    "delta_peak_I_high": m["peak_I_high"] - baseline_peak_I_high,
-                    "delta_peak_I_low": m["peak_I_low"] - baseline_peak_I_low,
+                    "delta_peak_I_high": m["peak_I_high"] - baseline["peak_I_high"],
+                    "delta_peak_I_low": m["peak_I_low"] - baseline["peak_I_low"],
                 })
                 print("✓")
 

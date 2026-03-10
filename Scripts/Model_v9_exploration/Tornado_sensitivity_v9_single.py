@@ -24,14 +24,11 @@ FIG_DPI = 600
 
 # Parameter keys for v9 single-strain tornado analysis
 # v9 single expects:
-# (c_low, r_low, m_r_drug, birth_rate, death_rate, delta, sigma, tau, theta)
+# (c_low, r_low, m_r_drug, sigma, tau, theta)
 PARAM_KEYS = [
     "contact_rate",
     "transmission_probability_low",
     "drug_transmission_multiplier",
-    "birth_rate",
-    "death_rate",
-    "delta",
     "sigma",
     "tau",
     "theta",
@@ -72,9 +69,6 @@ def get_base_param_dict():
             getattr(P, "transmission_probability_low", getattr(P, "transmission_probability", 0.025))
         ),
         "drug_transmission_multiplier": float(getattr(P, "drug_transmission_multiplier", 0.75)),
-        "birth_rate": float(getattr(P, "birth_rate", 0.0)),
-        "death_rate": float(getattr(P, "death_rate", 0.0)),
-        "delta": float(getattr(P, "delta", 1 / 120)),
         "sigma": float(getattr(P, "sigma", 1 / 5)),
         "tau": float(getattr(P, "tau", 1 / 3)),
         "theta": float(getattr(P, "theta", 0.3)),
@@ -89,21 +83,16 @@ def clamp_param(key, value):
         return max(float(value), 0.0)
     if key in {"theta"}:
         return float(np.clip(value, 0.0, 1.0))
-    if key in {"birth_rate", "death_rate"}:
-        return max(float(value), 0.0)
     return float(value)
 
 
 def build_param_tuple(d):
-    # v9 single expects (9):
-    # (c_low, r_low, m_r_drug, birth_rate, death_rate, delta, sigma, tau, theta)
+    # v9 single expects (6):
+    # (c_low, r_low, m_r_drug, sigma, tau, theta)
     return (
         float(d["contact_rate"]),
         float(d["transmission_probability_low"]),
         float(d["drug_transmission_multiplier"]),
-        float(d["birth_rate"]),
-        float(d["death_rate"]),
-        float(d["delta"]),
         float(d["sigma"]),
         float(d["tau"]),
         float(d["theta"]),

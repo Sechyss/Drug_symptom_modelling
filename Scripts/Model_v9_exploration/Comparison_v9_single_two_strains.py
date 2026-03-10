@@ -11,7 +11,6 @@ comparing all four scenarios headlessly.
 import os
 import sys
 import numpy as np
-import pandas as pd
 from scipy.integrate import odeint
 import matplotlib
 matplotlib.use('Agg')
@@ -35,7 +34,10 @@ Ind_9s = getattr(model_params, "Indl", 5)
 Id_9s = getattr(model_params, "Idl", 0)
 R_9s = getattr(model_params, "Rl", 0)
 init_v9_single = np.array([S_9s, E_9s, Ind_9s, Id_9s, R_9s], dtype=float)
-init_v9_single = init_v9_single / init_v9_single.sum()
+sum_v9_single = init_v9_single.sum()
+if sum_v9_single <= 0 or not np.isfinite(sum_v9_single):
+    raise ValueError("Single-strain initial conditions must have positive finite sum.")
+init_v9_single = init_v9_single / sum_v9_single
 
 #%% v9 (two-strain) initial conditions (S, Eh, Indh, Idh, Rh, El, Indl, Idl, Rl) normalized
 S9  = getattr(model_params, "S", 10000)
@@ -48,45 +50,40 @@ Indl9 = getattr(model_params, "Indl", 5)
 Idl9  = getattr(model_params, "Idl", 0)
 Rl9   = getattr(model_params, "Rl", 0)
 init_v9_two = np.array([S9, Eh9, Indh9, Idh9, Rh9, El9, Indl9, Idl9, Rl9], dtype=float)
-init_v9_two = init_v9_two / init_v9_two.sum()
+sum_v9_two = init_v9_two.sum()
+if sum_v9_two <= 0 or not np.isfinite(sum_v9_two):
+    raise ValueError("Two-strain initial conditions must have positive finite sum.")
+init_v9_two = init_v9_two / sum_v9_two
 
-#%% v9 single-strain parameters (9):
-# (c_low, r_low, m_r_drug, birth_rate, death_rate, delta, sigma, tau, theta)
+#%% v9 single-strain parameters (6):
+# (c_low, r_low, m_r_drug, sigma, tau, theta)
 c_low = getattr(model_params, "contact_rate", 10.0)
 r_low = getattr(model_params, "transmission_probability_low",
                 getattr(model_params, "transmission_probability", 0.025))
 m_r_drug = getattr(model_params, "drug_transmission_multiplier", 0.75)
-birth_rate = getattr(model_params, "birth_rate", 0.0)
-death_rate = getattr(model_params, "death_rate", 0.0)
-delta = 1/120  # immunity waning rate
 sigma = getattr(model_params, "sigma", 1/5)
 tau = getattr(model_params, "tau", 1/3)
 theta = getattr(model_params, "theta", 0.3)
 
 params_v9_single = [c_low, r_low, m_r_drug,
-                    birth_rate, death_rate, delta,
                     sigma, tau, theta]
 
 # Baseline v9 single: no drug
 params_v9_single_base = params_v9_single.copy()
 params_v9_single_base[2] = 1.0  # m_r_drug = 1.0 (no drug effect)
-params_v9_single_base[8] = 0.0  # theta = 0 (no treatment)
+params_v9_single_base[5] = 0.0  # theta = 0 (no treatment)
 params_v9_single_base = tuple(params_v9_single_base)
 params_v9_single_drug = tuple(params_v9_single)
 
-#%% v9 two-strain parameters (13)
+#%% v9 two-strain parameters (10)
 # (c_low, r_low, phi_t, restoration_efficiency, m_r_drug,
-#  birth_rate, death_rate, delta, kappa_base, kappa_scale,
-#  sigma, tau, theta)
+#  kappa_base, kappa_scale, sigma, tau, theta)
 c_low9 = getattr(model_params, "contact_rate", 10.0)
 r_low9 = getattr(model_params, "transmission_probability_low",
                  getattr(model_params, "transmission_probability", 0.025))
 phi_t = getattr(model_params, "phi_transmission", 1.5)
 restoration_efficiency = getattr(model_params, "drug_contact_restore", 0.5)
 m_r_drug9 = getattr(model_params, "drug_transmission_multiplier", 0.75)
-birth_rate9 = getattr(model_params, "birth_rate", 0.0)
-death_rate9 = getattr(model_params, "death_rate", 0.0)
-delta9 = 1/120  # immunity waning rate
 kappa_base9 = getattr(model_params, "kappa_base", 1.0)
 kappa_scale9 = getattr(model_params, "kappa_scale", 1.0)
 sigma9 = getattr(model_params, "sigma", 1/5)
@@ -94,14 +91,13 @@ tau9 = getattr(model_params, "tau", 1/3)
 theta9 = getattr(model_params, "theta", 0.3)
 
 params_v9_two = [c_low9, r_low9, phi_t, restoration_efficiency, m_r_drug9,
-                 birth_rate9, death_rate9, delta9,
                  kappa_base9, kappa_scale9, sigma9, tau9, theta9]
 
 # Baseline v9 two-strain: no drug
 params_v9_two_base = params_v9_two.copy()
 params_v9_two_base[3] = 0.0  # restoration_efficiency = 0 (no restoration)
 params_v9_two_base[4] = 1.0  # m_r_drug = 1.0 (no drug effect)
-params_v9_two_base[12] = 0.0 # theta = 0 (no treatment)
+params_v9_two_base[9] = 0.0 # theta = 0 (no treatment)
 params_v9_two_base = tuple(params_v9_two_base)
 params_v9_two_drug = tuple(params_v9_two)
 

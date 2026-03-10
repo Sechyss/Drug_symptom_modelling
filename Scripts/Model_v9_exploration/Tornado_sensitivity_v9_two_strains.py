@@ -24,16 +24,13 @@ FIG_DPI = 600
 # Parameter keys for v9 two-strain tornado analysis
 # v9 two-strain expects:
 # (c_low, r_low, phi_t, restoration_efficiency, m_r_drug,
-#  birth_rate, death_rate, delta, kappa_base, kappa_scale, sigma, tau, theta)
+#  kappa_base, kappa_scale, sigma, tau, theta)
 PARAM_KEYS = [
     "contact_rate",
     "transmission_probability_low",
     "phi_transmission",
     "restoration_efficiency",
     "drug_transmission_multiplier",
-    "birth_rate",
-    "death_rate",
-    "delta",
     "kappa_base",
     "kappa_scale",
     "sigma",
@@ -84,9 +81,6 @@ def get_base_param_dict():
         "phi_transmission": float(getattr(P, "phi_transmission", 1.5)),
         "restoration_efficiency": float(restoration_eff),
         "drug_transmission_multiplier": float(getattr(P, "drug_transmission_multiplier", 0.75)),
-        "birth_rate": float(getattr(P, "birth_rate", 0.0)),
-        "death_rate": float(getattr(P, "death_rate", 0.0)),
-        "delta": float(getattr(P, "delta", 1 / 120)),
         "kappa_base": float(getattr(P, "kappa_base", 1.0)),
         "kappa_scale": float(getattr(P, "kappa_scale", 1.0)),
         "sigma": float(getattr(P, "sigma", 1 / 5)),
@@ -105,8 +99,6 @@ def clamp_param(key, value):
         return max(float(value), 0.0)
     if key in {"theta", "restoration_efficiency"}:
         return float(np.clip(value, 0.0, 1.0))
-    if key in {"birth_rate", "death_rate"}:
-        return max(float(value), 0.0)
     return float(value)
 
 
@@ -117,9 +109,6 @@ def build_param_tuple(d):
         float(d["phi_transmission"]),
         float(d["restoration_efficiency"]),
         float(d["drug_transmission_multiplier"]),
-        float(d["birth_rate"]),
-        float(d["death_rate"]),
-        float(d["delta"]),
         float(d["kappa_base"]),
         float(d["kappa_scale"]),
         float(d["sigma"]),

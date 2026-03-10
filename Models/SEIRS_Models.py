@@ -1205,15 +1205,14 @@ def SEIRS_model_v9_singlestrain(y, t, params):
     # ─────────────────────────────────────────────────────────────────────────
     # STEP 2: Validate and unpack parameters
     # ─────────────────────────────────────────────────────────────────────────
-    if len(params) != 9:
+    if len(params) != 6:
         raise ValueError(
-            "SEIRS_model_v9 expects 9 params: "
+            "SEIRS_model_v9 expects 6 params: "
             "(c_low, r_low, m_r_drug, "
-            "birth_rate, death_rate, delta, sigma, tau, theta)"
+            "sigma, tau, theta)"
         )
 
-    (c_low, r_low, m_r_drug,
-     birth_rate, death_rate, delta, sigma, tau, theta) = params
+    (c_low, r_low, m_r_drug, sigma, tau, theta) = params
     
     beta_l_u = c_low * r_low
     beta_l_t = c_low * (r_low * m_r_drug)
@@ -1238,15 +1237,15 @@ def SEIRS_model_v9_singlestrain(y, t, params):
     # STEP 9: ODEs
     # ─────────────────────────────────────────────────────────────────────────
     
-    dSdt = birth_rate - (B_l) * S + delta * (Rl) - death_rate * S
+    dSdt = - (B_l) * S 
     
-    dEldt = B_l * S - tau * El - death_rate * El
+    dEldt = B_l * S - tau * El 
 
-    dIndldt = (1.0 - theta_low) * tau * El - sigma_l * Indl - death_rate * Indl
+    dIndldt = (1.0 - theta_low) * tau * El - sigma_l * Indl 
     
-    dIdldt = theta_low * tau * El - sigma_l * Idl - death_rate * Idl
+    dIdldt = theta_low * tau * El - sigma_l * Idl 
 
-    dRldt = sigma_l * (Indl + Idl) - delta * Rl - death_rate * Rl
+    dRldt = sigma_l * (Indl + Idl) 
 
     return np.array([dSdt, dEldt, dIndldt, dIdldt, dRldt])
 
@@ -1325,17 +1324,16 @@ def SEIRS_model_v9(y, t, params):
     # ─────────────────────────────────────────────────────────────────────────
     # STEP 2: Validate and unpack parameters
     # ─────────────────────────────────────────────────────────────────────────
-    if len(params) != 13:
+    if len(params) != 10:
         raise ValueError(
-            "SEIRS_model_v9 expects 13 params: "
+            "SEIRS_model_v9 expects 10 params: "
             "(c_low, r_low, phi_t, restoration_efficiency, m_r_drug, "
-            "birth_rate, death_rate, delta, kappa_base, kappa_scale, "
+            "kappa_base, kappa_scale, "
             "sigma, tau, theta)"
         )
 
     (c_low, r_low, phi_t,
      restoration_efficiency, m_r_drug,
-     birth_rate, death_rate, delta,
      kappa_base, kappa_scale, sigma, tau, theta) = params
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -1437,18 +1435,18 @@ def SEIRS_model_v9(y, t, params):
     # STEP 9: ODEs
     # ─────────────────────────────────────────────────────────────────────────
     
-    dSdt = birth_rate - (B_h + B_l) * S + delta * (Rh + Rl) - death_rate * S
+    dSdt = - (B_h + B_l) * S
     
-    dEhdt = B_h * S - tau * Eh - death_rate * Eh
-    dEldt = B_l * S - tau * El - death_rate * El
+    dEhdt = B_h * S - tau * Eh
+    dEldt = B_l * S - tau * El
 
-    dIndhdt = (1.0 - theta_high) * tau * Eh - sigma_h * Indh - death_rate * Indh
-    dIndldt = (1.0 - theta_low) * tau * El - sigma_l * Indl - death_rate * Indl
+    dIndhdt = (1.0 - theta_high) * tau * Eh - sigma_h * Indh
+    dIndldt = (1.0 - theta_low) * tau * El - sigma_l * Indl
     
-    dIdhdt = theta_high * tau * Eh - sigma_h * Idh - death_rate * Idh
-    dIdldt = theta_low * tau * El - sigma_l * Idl - death_rate * Idl
+    dIdhdt = theta_high * tau * Eh - sigma_h * Idh
+    dIdldt = theta_low * tau * El - sigma_l * Idl
 
-    dRhdt = sigma_h * (Indh + Idh) - delta * Rh - death_rate * Rh
-    dRldt = sigma_l * (Indl + Idl) - delta * Rl - death_rate * Rl
+    dRhdt = sigma_h * (Indh + Idh) 
+    dRldt = sigma_l * (Indl + Idl) 
 
     return np.array([dSdt, dEhdt, dIndhdt, dIdhdt, dRhdt, dEldt, dIndldt, dIdldt, dRldt])

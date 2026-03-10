@@ -44,12 +44,15 @@ Idl0 = getattr(model_params, "Idl", 0)
 Rl0 = getattr(model_params, "Rl", 0)
 
 init = np.array([S0, Eh0, Indh0, Idh0, Rh0, El0, Indl0, Idl0, Rl0], dtype=float)
-init = init / init.sum()
+init_sum = init.sum()
+if init_sum <= 0 or not np.isfinite(init_sum):
+    raise ValueError("Initial conditions must have positive finite sum.")
+init = init / init_sum
 
 
 # %% Baseline parameters for v9 two-strain
 # (c_low, r_low, phi_t, restoration_efficiency, m_r_drug,
-#  birth_rate, death_rate, delta, kappa_base, kappa_scale, sigma, tau, theta)
+#  kappa_base, kappa_scale, sigma, tau, theta)
 c_low = getattr(model_params, "contact_rate", 10.0)
 r_low = getattr(
     model_params,
@@ -59,9 +62,6 @@ r_low = getattr(
 phi_t = getattr(model_params, "phi_transmission", 1.5)
 restoration_baseline = getattr(model_params, "drug_contact_restore", 0.5)
 m_r_baseline = getattr(model_params, "drug_transmission_multiplier", 0.75)
-birth_rate = getattr(model_params, "birth_rate", 0.0)
-death_rate = getattr(model_params, "death_rate", 0.0)
-delta = getattr(model_params, "delta", 1 / 120)
 kappa_base = getattr(model_params, "kappa_base", 1.0)
 kappa_scale = getattr(model_params, "kappa_scale", 1.0)
 sigma = getattr(model_params, "sigma", 1 / 5)
@@ -77,9 +77,6 @@ def pack_params(restoration_efficiency, m_r_drug, theta):
         phi_t,
         restoration_efficiency,
         m_r_drug,
-        birth_rate,
-        death_rate,
-        delta,
         kappa_base,
         kappa_scale,
         sigma,

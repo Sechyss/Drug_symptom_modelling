@@ -38,11 +38,14 @@ Idl0 = getattr(model_params, "Idl", 0)
 Rl0 = getattr(model_params, "Rl", 0)
 
 init = np.array([S0, El0, Indl0, Idl0, Rl0], dtype=float)
-init = init / init.sum()
+init_sum = init.sum()
+if init_sum <= 0 or not np.isfinite(init_sum):
+    raise ValueError("Initial conditions must have positive finite sum.")
+init = init / init_sum
 
 
 # %% Baseline parameters for v9 single-strain
-# (c_low, r_low, m_r_drug, birth_rate, death_rate, delta, sigma, tau, theta)
+# (c_low, r_low, m_r_drug, sigma, tau, theta)
 c_low = getattr(model_params, "contact_rate", 10.0)
 r_low = getattr(
     model_params,
@@ -50,9 +53,6 @@ r_low = getattr(
     getattr(model_params, "transmission_probability", 0.025),
 )
 m_r_baseline = getattr(model_params, "drug_transmission_multiplier", 0.75)
-birth_rate = getattr(model_params, "birth_rate", 0.0)
-death_rate = getattr(model_params, "death_rate", 0.0)
-delta = getattr(model_params, "delta", 1 / 120)
 sigma = getattr(model_params, "sigma", 1 / 5)
 tau = getattr(model_params, "tau", 1 / 3)
 theta_baseline = getattr(model_params, "theta", 0.3)
@@ -64,9 +64,6 @@ def pack_params(m_r_drug, theta):
         c_low,
         r_low,
         m_r_drug,
-        birth_rate,
-        death_rate,
-        delta,
         sigma,
         tau,
         theta,
