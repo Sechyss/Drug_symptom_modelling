@@ -81,7 +81,7 @@ def SEIRS_model_v2(y, t, params):
     """
     SEIRS model testing virulence-transmission trade-off with symptom-targeting drug.
     
-    Parameters (12):  # Note: increased to 12
+    Parameters (13):
     - contact_rate, transmission_probability
     - birth_rate, death_rate
     - delta: immunity waning rate
@@ -234,8 +234,8 @@ def SEIRS_model_v4(y, t, params):
     """
     SEIRS model variant simplified to a single strain with drug-modified behavior.
 
-        Params (12):
-      (contact_rate, transmission_probability, phi_transmission,
+        Params (13):
+      (contact_rate, transmission_probability, contact_rate_high, phi_transmission,
        drug_contact_multiplier, drug_transmission_multiplier,
              birth_rate, death_rate, kappa_base, kappa_scale,
              sigma, tau, theta)
@@ -255,10 +255,10 @@ def SEIRS_model_v4(y, t, params):
     y = np.maximum(np.asarray(y, dtype=float), 0.0)
     S, El, Indl, Idl, Rl = y
 
-    if not hasattr(params, "__len__") or len(params) != 12:
+    if not hasattr(params, "__len__") or len(params) != 13:
         raise ValueError(
-            "SEIRS_model_v4 expects 12 params: "
-            "(contact_rate, transmission_probability, phi_transmission, "
+        "SEIRS_model_v4 expects 13 params: "
+        "(contact_rate, transmission_probability, contact_rate_high, phi_transmission, "
             "drug_contact_multiplier, drug_transmission_multiplier, "
             "birth_rate, death_rate, kappa_base, kappa_scale, "
             "sigma, tau, theta)"
@@ -321,7 +321,7 @@ def SEIRS_model_v5(y, t, params):
 
     if not hasattr(params, "__len__") or len(params) != 14:
         raise ValueError(
-            "SEIRS_model_v3 expects 14 params: "
+            "SEIRS_model_v5 expects 14 params: "
             "(contact_rate_low, transmission_probability_low, contact_rate_high, phi_transmission, "
             "drug_contact_multiplier, drug_transmission_multiplier, "
             "birth_rate, death_rate, kappa_base, kappa_scale, phi_recover, sigma, tau, theta)"
@@ -921,6 +921,150 @@ def SEIRS_model_v7(y, t, params):
 
     return np.array([dSdt, dEhdt, dIndhdt, dIdhdt, dRhdt, dEldt, dIndldt, dIdldt, dRldt])
 
+def SEIRS_model_v8_singlestrain(y, t, params):
+    """
+    v8: Unified contact restoration mechanism (virulence-aware symptom masking).
+    
+    ═══════════════════════════════════════════════════════════════════════════
+    KEY DIFFERENCE FROM v7
+    ═══════════════════════════════════════════════════════════════════════════
+    
+    In v7: Two separate mechanisms:
+           - m_c_drug: general contact boost (applies to all treated)
+           - drug_contact_restore (ρ): specific to high-strain
+           Creates confusing interactions and biological ambiguity.
+    
+    In v8: Single unified mechanism:
+           - restoration_efficiency (ρ): how well drug masks symptoms
+           - Applies proportionally to symptomatic burden
+           
+           c_treated = c_untreated + ρ × (c_low - c_untreated)
+           
+           Where (c_low - c_untreated) = contacts LOST to symptoms
+           
+    ═══════════════════════════════════════════════════════════════════════════
+    BIOLOGICAL RATIONALE
+    ═══════════════════════════════════════════════════════════════════════════
+    
+    Symptoms reduce contacts proportional to their severity:
+      - No symptoms (healthy): c = c_low (baseline)
+      - Mild symptoms (low-strain): c ≈ c_low (stays home a bit)
+      - Severe symptoms (high-strain untreated): c = c_high << c_low (bedridden)
+    
+    Drug masks symptoms → restores lost contacts proportional to severity:
+      - High-strain treated: can restore much (lost 30% of contacts)
+      - Low-strain treated: can restore little (lost 5% of contacts)
+    
+    This is BIOLOGICALLY REALISTIC:
+      Drug effectiveness depends on how much symptom burden exists to mask!
+      No symptoms → no restoration possible
+      Severe symptoms → drug can restore substantial contacts
+    
+    ═══════════════════════════════════════════════════════════════════════════
+    PARAMETERS (9 total)
+    ═══════════════════════════════════════════════════════════════════════════
+    (c_low, r_low, phi_t,
+     m_r_drug,
+     kappa_base, kappa_scale,
+     sigma, tau, theta)
+    
+    This single-strain variant keeps a compact parameterization and does not
+    include contact restoration terms.
+    
+    KEPT:
+      - m_r_drug: transmission probability modifier (antivirals reduce viral load)
+    
+    ═══════════════════════════════════════════════════════════════════════════
+    """
+    # ─────────────────────────────────────────────────────────────────────────
+    # STEP 1: Sanitize state variables
+    # ─────────────────────────────────────────────────────────────────────────
+    y = np.maximum(np.asarray(y, dtype=float), 0.0)
+    S, El, Indl, Idl, Rl = y
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # STEP 2: Validate and unpack parameters
+    # ─────────────────────────────────────────────────────────────────────────
+    if len(params) != 9:
+        raise ValueError(
+            "SEIRS_model_v8_singlestrain expects 9 params: "
+            "(c_low, r_low, phi_t, m_r_drug, "
+            "kappa_base, kappa_scale, sigma, tau, theta)"
+        )
+
+    (c_low, r_low, phi_t, m_r_drug,
+     kappa_base, kappa_scale, sigma, tau, theta) = params
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # STEP 3: Calculate contact rates with VIRULENCE PENALTY
+    # ─────────────────────────────────────────────────────────────────────────
+    # 
+    # Untreated high-strain contact is set so beta_h_u == beta_l_u:
+    #   beta_h_u = c_high_untreated * r_low * phi_t
+    #   beta_l_u = c_low * r_low
+    # Therefore c_high_untreated = c_low / phi_t.
+    # As phi_t increases (more symptoms/virulence), contact decreases.
+    vir_excess_pos = max(0.0, phi_t - 1.0)
+    
+    # LOW-STRAIN remains unchanged.
+    c_low_untreated = c_low
+
+    # Single-strain variant: contact is kept at c_low; only m_r_drug modifies
+    # treated transmission probability.
+    c_low_treated = c_low  # no restoration for low-strain (no symptom loss)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # STEP 5: Calculate transmission rates (β)
+    # ─────────────────────────────────────────────────────────────────────────
+    
+    # LOW-STRAIN UNTREATED:
+    # β_l_u = c_low × r_low
+    beta_l_u = c_low_untreated * r_low
+    
+    # LOW-STRAIN TREATED:
+    # β_l_t = c_low_treated × (r_low × m_r_drug)
+    # Since c_low_treated = c_low_untreated, only m_r_drug changes transmission
+    beta_l_t = c_low_treated * (r_low * m_r_drug)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # STEP 6: Detection/treatment probabilities
+    # ─────────────────────────────────────────────────────────────────────────
+    # 
+    # Higher virulence → more severe symptoms → higher detection
+    # κ_high = κ_base × (1 + κ_scale × (φ - 1))
+    
+    kappa_high = kappa_base * (1 + kappa_scale * vir_excess_pos)
+    kappa_low = kappa_base
+    if theta > 0:
+        kappa_high = min(kappa_high, 1.0 / theta)
+        kappa_low = min(kappa_low, 1.0 / theta)
+
+    theta_low = kappa_low * theta
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # STEP 7: Forces of Infection
+    # ─────────────────────────────────────────────────────────────────────────
+
+    B_l = beta_l_u * Indl + beta_l_t * Idl
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # STEP 8: ODEs
+    # ─────────────────────────────────────────────────────────────────────────
+    
+    dSdt = - (B_l) * S 
+    
+
+    dEldt = B_l * S - tau * El 
+
+    sigma_l = sigma
+
+    dIndldt = (1.0 - theta_low) * tau * El - sigma_l * Indl 
+    
+    dIdldt = theta_low * tau * El - sigma_l * Idl 
+
+    dRldt = sigma_l * (Indl + Idl) 
+
+    return np.array([dSdt, dEldt, dIndldt, dIdldt, dRldt])
 
 def SEIRS_model_v8(y, t, params):
     """
@@ -962,11 +1106,10 @@ def SEIRS_model_v8(y, t, params):
       Severe symptoms → drug can restore substantial contacts
     
     ═══════════════════════════════════════════════════════════════════════════
-    PARAMETERS (14 total) - simplified from v7's 15
+    PARAMETERS (10 total) - simplified from v7's 15
     ═══════════════════════════════════════════════════════════════════════════
     (c_low, r_low, phi_t,
      restoration_efficiency, m_r_drug,
-     birth_rate, death_rate, delta,
      kappa_base, kappa_scale,
      sigma, tau, theta)
     
@@ -995,35 +1138,31 @@ def SEIRS_model_v8(y, t, params):
     # ─────────────────────────────────────────────────────────────────────────
     # STEP 2: Validate and unpack parameters
     # ─────────────────────────────────────────────────────────────────────────
-    if len(params) != 13:
+    if len(params) != 10:
         raise ValueError(
-            "SEIRS_model_v8 expects 13 params: "
+            "SEIRS_model_v8 expects 10 params: "
             "(c_low, r_low, phi_t, restoration_efficiency, m_r_drug, "
-            "birth_rate, death_rate, delta, kappa_base, kappa_scale, "
-            "sigma, tau, theta)"
+            "kappa_base, kappa_scale, sigma, tau, theta)"
         )
 
     (c_low, r_low, phi_t,
      restoration_efficiency, m_r_drug,
-     birth_rate, death_rate, delta,
      kappa_base, kappa_scale, sigma, tau, theta) = params
 
     # ─────────────────────────────────────────────────────────────────────────
     # STEP 3: Calculate contact rates with VIRULENCE PENALTY
     # ─────────────────────────────────────────────────────────────────────────
     # 
-    # Untreated contact rates: virulence causes symptom-induced reduction
-    # c_high_untreated = c_low × exp(-α × max(0, φ - 1))
-    
-    alpha = 0.5  # virulence penalty severity
+    # Untreated high-strain contact is set so beta_h_u == beta_l_u:
+    #   beta_h_u = c_high_untreated * r_low * phi_t
+    #   beta_l_u = c_low * r_low
+    # Therefore c_high_untreated = c_low / phi_t.
+    # As phi_t increases (more symptoms/virulence), contact decreases.
     vir_excess_pos = max(0.0, phi_t - 1.0)
-    c_high_untreated = c_low * np.exp(-alpha * vir_excess_pos)
+    phi_safe = max(phi_t, 1e-8)
+    c_high_untreated = c_low / phi_safe
     
-    # LOW-STRAIN: mild symptoms, only minor contact reduction
-    # For v8, we assume low-strain has minimal symptom burden
-    # If you want to model it explicitly:
-    # c_low_untreated = c_low × exp(-α_low × (φ - 1))
-    # For now, c_low_untreated ≈ c_low (no penalty for low-strain)
+    # LOW-STRAIN remains unchanged.
     c_low_untreated = c_low
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -1113,22 +1252,22 @@ def SEIRS_model_v8(y, t, params):
     # STEP 8: ODEs
     # ─────────────────────────────────────────────────────────────────────────
     
-    dSdt = birth_rate - (B_h + B_l) * S + delta * (Rh + Rl) - death_rate * S
+    dSdt = - (B_h + B_l) * S 
     
-    dEhdt = B_h * S - tau * Eh - death_rate * Eh
-    dEldt = B_l * S - tau * El - death_rate * El
+    dEhdt = B_h * S - tau * Eh 
+    dEldt = B_l * S - tau * El 
 
     sigma_h = sigma
     sigma_l = sigma
 
-    dIndhdt = (1.0 - theta_high) * tau * Eh - sigma_h * Indh - death_rate * Indh
-    dIndldt = (1.0 - theta_low) * tau * El - sigma_l * Indl - death_rate * Indl
+    dIndhdt = (1.0 - theta_high) * tau * Eh - sigma_h * Indh 
+    dIndldt = (1.0 - theta_low) * tau * El - sigma_l * Indl 
     
-    dIdhdt = theta_high * tau * Eh - sigma_h * Idh - death_rate * Idh
-    dIdldt = theta_low * tau * El - sigma_l * Idl - death_rate * Idl
+    dIdhdt = theta_high * tau * Eh - sigma_h * Idh 
+    dIdldt = theta_low * tau * El - sigma_l * Idl 
 
-    dRhdt = sigma_h * (Indh + Idh) - delta * Rh - death_rate * Rh
-    dRldt = sigma_l * (Indl + Idl) - delta * Rl - death_rate * Rl
+    dRhdt = sigma_h * (Indh + Idh) 
+    dRldt = sigma_l * (Indl + Idl) 
 
     return np.array([dSdt, dEhdt, dIndhdt, dIdhdt, dRhdt, dEldt, dIndldt, dIdldt, dRldt])
 
@@ -1184,15 +1323,12 @@ def SEIRS_model_v9_singlestrain(y, t, params):
     This balances the transmission advantage (φ) with the contact penalty!
     
     ═══════════════════════════════════════════════════════════════════════════
-    PARAMETERS (13 total) - same as v8
+    PARAMETERS (6 total)
     ═══════════════════════════════════════════════════════════════════════════
-    (c_low, r_low, phi_t,
-     restoration_efficiency, m_r_drug,
-     birth_rate, death_rate, delta,
-     kappa_base, kappa_scale,
+    (c_low, r_low, m_r_drug,
      sigma, tau, theta)
     
-    No new parameters! Only the model logic changes.
+    Compact single-strain form used for targeted analyses.
     
     ═══════════════════════════════════════════════════════════════════════════
     """
@@ -1207,7 +1343,7 @@ def SEIRS_model_v9_singlestrain(y, t, params):
     # ─────────────────────────────────────────────────────────────────────────
     if len(params) != 6:
         raise ValueError(
-            "SEIRS_model_v9 expects 6 params: "
+            "SEIRS_model_v9_singlestrain expects 6 params: "
             "(c_low, r_low, m_r_drug, "
             "sigma, tau, theta)"
         )
@@ -1303,11 +1439,10 @@ def SEIRS_model_v9(y, t, params):
     This balances the transmission advantage (φ) with the contact penalty!
     
     ═══════════════════════════════════════════════════════════════════════════
-    PARAMETERS (13 total) - same as v8
+    PARAMETERS (10 total) - same as v8
     ═══════════════════════════════════════════════════════════════════════════
     (c_low, r_low, phi_t,
      restoration_efficiency, m_r_drug,
-     birth_rate, death_rate, delta,
      kappa_base, kappa_scale,
      sigma, tau, theta)
     

@@ -31,12 +31,8 @@ PARAM_KEYS = [
     "phi_transmission",
     "restoration_efficiency",         # NEW in v8: unified contact restoration
     "drug_transmission_multiplier",
-    "birth_rate",
-    "death_rate",
-    "delta",
     "kappa_base",
     "kappa_scale",
-    "phi_recover",
     "sigma",
     "tau",
     "theta",
@@ -84,12 +80,8 @@ def get_base_param_dict():
         "phi_transmission": float(P.phi_transmission),
         "restoration_efficiency": float(restoration_eff),
         "drug_transmission_multiplier": float(P.drug_transmission_multiplier),
-        "birth_rate": float(P.birth_rate),
-        "death_rate": float(P.death_rate),
-        "delta": float(P.delta),
         "kappa_base": float(P.kappa_base),
         "kappa_scale": float(P.kappa_scale),
-        "phi_recover": float(P.phi_recover),
         "sigma": float(P.sigma),
         "tau": float(P.tau),
         "theta": float(P.theta),
@@ -98,9 +90,9 @@ def get_base_param_dict():
 
 def clamp_param(key, value):
     # Basic safety clamps (keep model in valid region)
-    if key in {"contact_rate", "sigma", "tau", "delta", "kappa_base"}:
+    if key in {"contact_rate", "sigma", "tau", "kappa_base"}:
         return max(float(value), 1e-6)  # Avoid exactly zero for rates
-    if key in {"kappa_scale", "phi_transmission", "phi_recover"}:
+    if key in {"kappa_scale", "phi_transmission"}:
         return max(float(value), 0.0)
     if key in {"drug_transmission_multiplier", "transmission_probability_low"}:
         return max(float(value), 0.0)
@@ -112,22 +104,17 @@ def clamp_param(key, value):
 
 
 def build_param_tuple(d):
-    # v8 expects (14):
+    # v8 expects (10):
     # (c_low, r_low, phi_t, restoration_efficiency, m_r_drug,
-    #  birth_rate, death_rate, delta, kappa_base, kappa_scale, 
-    #  phi_recover, sigma, tau, theta)
+    #  kappa_base, kappa_scale, sigma, tau, theta)
     return (
         float(d["contact_rate"]),
         float(d["transmission_probability_low"]),
         float(d["phi_transmission"]),
         float(d["restoration_efficiency"]),
         float(d["drug_transmission_multiplier"]),
-        float(d["birth_rate"]),
-        float(d["death_rate"]),
-        float(d["delta"]),
         float(d["kappa_base"]),
         float(d["kappa_scale"]),
-        float(d["phi_recover"]),
         float(d["sigma"]),
         float(d["tau"]),
         float(d["theta"]),
