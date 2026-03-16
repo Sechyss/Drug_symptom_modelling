@@ -29,7 +29,8 @@ from scipy.integrate import odeint
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.colors import TwoSlopeNorm
+from matplotlib.colors import TwoSlopeNorm, Normalize
+from matplotlib.ticker import FuncFormatter
 
 # allow imports from project root
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -129,24 +130,15 @@ def peak_infection_heatmaps(df: pd.DataFrame, out_path: str, max_phi_panels: int
     - Right column: High-strain heatmaps (one per phi value)
     - Horizontal colorbars at bottom
     """
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
     phi_all = sorted(df["phi_transmission"].unique())
     if len(phi_all) > max_phi_panels:
         phi_vals = [phi_all[int(i * len(phi_all) / max_phi_panels)] for i in range(max_phi_panels)]
     else:
         phi_vals = phi_all
-
     n_phi = len(phi_vals)
-    fig, axes = plt.subplots(n_phi, 2, figsize=(12, 4.5 * n_phi), squeeze=False)
-
-    max_abs_high = df["delta_peak_I_high"].abs().max()
-    max_abs_low = df["delta_peak_I_low"].abs().max()
-    norm_high = TwoSlopeNorm(vmin=-max_abs_high, vcenter=0.0, vmax=max_abs_high)
-    norm_low = TwoSlopeNorm(vmin=-max_abs_low, vcenter=0.0, vmax=max_abs_low)
-
-    im_h_ref = None
-    im_l_ref = None
+    fig, axes = plt.subplots(n_phi, 2, figsize=(13.5, 4.8 * n_phi), squeeze=False)
     restoration_min = df["restoration_efficiency"].min()
     restoration_max = df["restoration_efficiency"].max()
     mr_min = df["mr"].min()
@@ -154,13 +146,38 @@ def peak_infection_heatmaps(df: pd.DataFrame, out_path: str, max_phi_panels: int
 
     for phi_idx, phi_t in enumerate(phi_vals):
         df_phi = df[df["phi_transmission"] == phi_t]
+        pivot_high = df_phi.pivot_table(index="mr", columns="restoration_efficiency", values="delta_peak_I_high", sort=True)
+        pivot_low = df_phi.pivot_table(index="mr", columns="restoration_efficiency", values="delta_peak_I_low", sort=True)
 
-        pivot_high = df_phi.pivot_table(
-            index="mr", columns="restoration_efficiency", values="delta_peak_I_high", sort=True
-        )
-        pivot_low = df_phi.pivot_table(
-            index="mr", columns="restoration_efficiency", values="delta_peak_I_low", sort=True
-        )
+        # Safe per-panel color scaling: center at zero only when panel spans both signs.
+        vals_high = np.asarray(pivot_high.values, dtype=float)
+        vals_low = np.asarray(pivot_low.values, dtype=float)
+        finite_high = vals_high[np.isfinite(vals_high)]
+        finite_low = vals_low[np.isfinite(vals_low)]
+
+        if finite_high.size == 0:
+            norm_high = None
+        else:
+            min_high = float(finite_high.min())
+            max_high = float(finite_high.max())
+            if np.isclose(min_high, max_high):
+                norm_high = None
+            elif min_high < 0.0 < max_high:
+                norm_high = TwoSlopeNorm(vmin=min_high, vcenter=0.0, vmax=max_high)
+            else:
+                norm_high = Normalize(vmin=min_high, vmax=max_high)
+
+        if finite_low.size == 0:
+            norm_low = None
+        else:
+            min_low = float(finite_low.min())
+            max_low = float(finite_low.max())
+            if np.isclose(min_low, max_low):
+                norm_low = None
+            elif min_low < 0.0 < max_low:
+                norm_low = TwoSlopeNorm(vmin=min_low, vcenter=0.0, vmax=max_low)
+            else:
+                norm_low = Normalize(vmin=min_low, vmax=max_low)
 
         im_l = axes[phi_idx, 0].imshow(
             pivot_low.values,
@@ -186,22 +203,41 @@ def peak_infection_heatmaps(df: pd.DataFrame, out_path: str, max_phi_panels: int
         axes[phi_idx, 1].set_xlabel("Restoration efficiency rho", fontsize=10)
         axes[phi_idx, 1].set_ylabel("Transmission multiplier m_r", fontsize=10)
 
-        if im_l_ref is None:
-            im_l_ref = im_l
-        if im_h_ref is None:
-            im_h_ref = im_h
+        # Add per-panel colorbars
+        cbar_l = fig.colorbar(im_l, ax=axes[phi_idx, 0], orientation="horizontal", pad=0.10, shrink=0.95)
+        cbar_l.set_label("Delta Peak I_low (vs baseline)", fontsize=10)
+        cbar_h = fig.colorbar(im_h, ax=axes[phi_idx, 1], orientation="horizontal", pad=0.10, shrink=0.95)
+        cbar_h.set_label("Delta Peak I_high (vs baseline)", fontsize=10)
 
-    fig.subplots_adjust(bottom=0.12, hspace=0.4)
+        # Force visible, consistent tick labels on both colorbars.
+        sci_fmt = FuncFormatter(lambda x, _: f"{x:.2e}")
 
-    cbar_ax_l = fig.add_axes([0.15, 0.06, 0.3, 0.02])
-    cbar_l = fig.colorbar(im_l_ref, cax=cbar_ax_l, orientation="horizontal")
-    cbar_l.set_label("Delta Peak I_low (vs baseline)", fontsize=10)
+        def build_ticks(vmin: float, vmax: float) -> np.ndarray:
+            if np.isclose(vmin, vmax):
+                span = max(abs(vmin), 1e-9)
+                return np.array([vmin - 0.05 * span, vmin, vmin + 0.05 * span])
+            if vmin < 0.0 < vmax:
+                neg = np.array([vmin, 0.5 * vmin])
+                pos = np.array([0.5 * vmax, vmax])
+                ticks = np.concatenate([neg, np.array([0.0]), pos])
+                return np.sort(np.unique(ticks))
+            return np.linspace(vmin, vmax, 5)
 
-    cbar_ax_h = fig.add_axes([0.55, 0.06, 0.3, 0.02])
-    cbar_h = fig.colorbar(im_h_ref, cax=cbar_ax_h, orientation="horizontal")
-    cbar_h.set_label("Delta Peak I_high (vs baseline)", fontsize=10)
+        if finite_low.size > 0:
+            ticks_low = build_ticks(min_low, max_low)
+            cbar_l.set_ticks(ticks_low)
+            cbar_l.ax.xaxis.set_major_formatter(sci_fmt)
+        cbar_l.ax.tick_params(labelsize=8, length=3, width=0.8, bottom=True, top=False, labelbottom=True)
 
-    fig.savefig(out_path, dpi=200, bbox_inches="tight")
+        if finite_high.size > 0:
+            ticks_high = build_ticks(min_high, max_high)
+            cbar_h.set_ticks(ticks_high)
+            cbar_h.ax.xaxis.set_major_formatter(sci_fmt)
+        cbar_h.ax.tick_params(labelsize=8, length=3, width=0.8, bottom=True, top=False, labelbottom=True)
+
+    # Extra margins prevent right-column colorbar labels from being clipped.
+    fig.subplots_adjust(left=0.08, right=0.98, bottom=0.06, top=0.97, hspace=0.55, wspace=0.26)
+    fig.savefig(out_path, dpi=200)
     print(f"✓ Saved heatmap: {out_path}")
     plt.close(fig)
 
