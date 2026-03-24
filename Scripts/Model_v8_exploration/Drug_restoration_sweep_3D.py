@@ -204,9 +204,9 @@ def peak_infection_heatmaps(df: pd.DataFrame, out_path: str, max_phi_panels: int
         axes[phi_idx, 1].set_ylabel("Transmission multiplier m_r", fontsize=10)
 
         # Add per-panel colorbars
-        cbar_l = fig.colorbar(im_l, ax=axes[phi_idx, 0], orientation="horizontal", pad=0.10, shrink=0.95)
+        cbar_l = fig.colorbar(im_l, ax=axes[phi_idx, 0], orientation="horizontal", pad=0.25, shrink=0.95)
         cbar_l.set_label("Delta Peak I_low (vs baseline)", fontsize=10)
-        cbar_h = fig.colorbar(im_h, ax=axes[phi_idx, 1], orientation="horizontal", pad=0.10, shrink=0.95)
+        cbar_h = fig.colorbar(im_h, ax=axes[phi_idx, 1], orientation="horizontal", pad=0.25, shrink=0.95)
         cbar_h.set_label("Delta Peak I_high (vs baseline)", fontsize=10)
 
         # Force visible, consistent tick labels on both colorbars.
@@ -236,7 +236,7 @@ def peak_infection_heatmaps(df: pd.DataFrame, out_path: str, max_phi_panels: int
         cbar_h.ax.tick_params(labelsize=8, length=3, width=0.8, bottom=True, top=False, labelbottom=True)
 
     # Extra margins prevent right-column colorbar labels from being clipped.
-    fig.subplots_adjust(left=0.08, right=0.98, bottom=0.06, top=0.97, hspace=0.55, wspace=0.26)
+    fig.subplots_adjust(left=0.08, right=0.98, bottom=0.12, top=0.97, hspace=0.55, wspace=0.26)
     fig.savefig(out_path, dpi=200)
     print(f"✓ Saved heatmap: {out_path}")
     plt.close(fig)
