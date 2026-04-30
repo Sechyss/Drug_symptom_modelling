@@ -119,17 +119,17 @@ def run_scenario(name, params_tuple):
 # %% Define the four requested scenarios
 scenarios = {
     "No drug": pack_params(restoration_efficiency=0.0, m_r_drug=1.0, theta=0.0),
-    "Baseline drug": pack_params(
+    "Drug A": pack_params(
         restoration_efficiency=restoration_baseline,
         m_r_drug=m_r_baseline,
         theta=theta_baseline,
     ),
-    "No restoration, baseline m_r": pack_params(
+    "Drug B": pack_params(
         restoration_efficiency=0.0,
         m_r_drug=m_r_baseline,
         theta=theta_baseline,
     ),
-    "m_r = 1, baseline restoration": pack_params(
+    "Drug C": pack_params(
         restoration_efficiency=restoration_baseline,
         m_r_drug=1.0,
         theta=theta_baseline,
@@ -151,7 +151,7 @@ for name, out in results.items():
     print(f"  Attack rate: {m['attack_rate']:.6f}")
 
 
-# %% Plot dynamics (single combined panel, publication-style)
+# %% Plot dynamics (two panels, shared y-axis, publication-style)
 from matplotlib.lines import Line2D
 
 # Scientific style settings (portable, no external font dependency)
@@ -175,50 +175,48 @@ matplotlib.rcParams.update(
 
 scenario_styles = {
     "No drug": {"color": "#1b9e77"},
-    "Baseline drug": {"color": "#d95f02"},
-    "No restoration, baseline m_r": {"color": "#7570b3"},
-    "m_r = 1, baseline restoration": {"color": "#e7298a"},
+    "Drug A": {"color": "#d95f02"},
+    "Drug B": {"color": "#7570b3"},
+    "Drug C": {"color": "#e7298a"},
 }
 
-fig, ax = plt.subplots(figsize=(9.2, 5.8), constrained_layout=True)
+fig, (ax_low, ax_high) = plt.subplots(
+    1, 2, figsize=(12.2, 5.6), sharey=True, constrained_layout=True
+)
 
-# Plot both strains in one panel:
-# high strain = solid, low strain = dashed
+# Left: low virulence strain
+# Right: high virulence strain
 for name, out in results.items():
     color = scenario_styles[name]["color"]
-    ax.plot(T, out["inf_high"], color=color, ls="-")
-    ax.plot(T, out["inf_low"], color=color, ls="--")
+    ax_low.plot(T, out["inf_low"], color=color, ls="-")
+    ax_high.plot(T, out["inf_high"], color=color, ls="-")
 
-ax.set_xlabel("Time (days)")
-ax.set_ylabel("Infectious proportion")
-ax.grid(True, alpha=0.25)
-ax.spines["top"].set_visible(False)
-ax.spines["right"].set_visible(False)
+ax_low.set_title("Low virulence strain")
+ax_high.set_title("High virulence strain")
+ax_low.set_xlabel("Time (days)")
+ax_high.set_xlabel("Time (days)")
+ax_low.set_ylabel("Infectious proportion")
 
-# Legend 1: scenario colors (moved to center right, single column)
+# Panel labels for manuscript-style multi-panel figure
+ax_low.text(0.01, 0.98, "A", transform=ax_low.transAxes, ha="left", va="top", fontweight="bold", fontsize=14)
+ax_high.text(0.01, 0.98, "B", transform=ax_high.transAxes, ha="left", va="top", fontweight="bold", fontsize=14)
+
+for ax in (ax_low, ax_high):
+    ax.grid(True, alpha=0.25)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+# Scenario-color legend on right panel
 scenario_handles = [
     Line2D([0], [0], color=scenario_styles[name]["color"], lw=2.5, label=name)
-    for name in scenario_styles
+    for name in scenarios
 ]
-leg1 = ax.legend(
+ax_high.legend(
     handles=scenario_handles,
     title="Scenario",
     loc="center right",
     frameon=False,
     ncol=1,
-)
-ax.add_artist(leg1)
-
-# Legend 2: strain line styles
-strain_handles = [
-    Line2D([0], [0], color="black", lw=2.5, ls="-", label="High strain"),
-    Line2D([0], [0], color="black", lw=2.5, ls="--", label="Low strain"),
-]
-ax.legend(
-    handles=strain_handles,
-    title="Strain",
-    loc="upper right",
-    frameon=False,
 )
 
 out_base = os.path.join(

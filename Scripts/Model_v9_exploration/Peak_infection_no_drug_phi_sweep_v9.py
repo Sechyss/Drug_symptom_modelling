@@ -38,7 +38,7 @@ from Models import params as P
 
 
 COLS = ["S", "Eh", "Indh", "Idh", "Rh", "El", "Indl", "Idl", "Rl"]
-DEFAULT_PHI = [1.0, 1.33, 1.67, 2.0]
+DEFAULT_PHI = [1.0, 2.0, 3.0, 4.0]
 
 
 def initial_conditions(normalize: bool = True) -> np.ndarray:
@@ -126,37 +126,43 @@ def plot_results(results: List[Tuple[float, np.ndarray, Dict[str, np.ndarray]]],
         }
     )
 
-    fig, (ax_ts, ax_peak) = plt.subplots(2, 1, figsize=(10.0, 9.0), constrained_layout=True)
+    import matplotlib.gridspec as gridspec
+    
+    fig = plt.figure(figsize=(14.0, 10.0), constrained_layout=True)
+    gs = gridspec.GridSpec(2, 2, figure=fig)
+    ax_low = fig.add_subplot(gs[0, 0])
+    ax_high = fig.add_subplot(gs[0, 1], sharey=ax_low)
+    ax_peak = fig.add_subplot(gs[1, :])
+    
     cmap = plt.get_cmap("viridis")
     n_phi = max(len(results), 1)
 
+    # Plot low virulence strain on left panel, high virulence on right panel
     for idx, (phi_t, t, sim) in enumerate(results):
         color = cmap(idx / max(n_phi - 1, 1))
-        ax_ts.plot(t, sim["I_high"], color=color, ls="-", label=f"phi={phi_t:.2f}")
-        ax_ts.plot(t, sim["I_low"], color=color, ls="--")
+        ax_low.plot(t, sim["I_low"], color=color, ls="-", label=f"phi={phi_t:.2f}")
+        ax_high.plot(t, sim["I_high"], color=color, ls="-", label=f"phi={phi_t:.2f}")
 
-    ax_ts.set_title("SEIRS v9: No-drug infectious dynamics across virulence")
-    ax_ts.set_xlabel("Time (days)")
-    ax_ts.set_ylabel("Infectious proportion")
-    ax_ts.grid(True, alpha=0.25)
-    ax_ts.spines["top"].set_visible(False)
-    ax_ts.spines["right"].set_visible(False)
+    ax_low.set_title("Low virulence strain")
+    ax_high.set_title("High virulence strain")
+    ax_low.set_xlabel("Time (days)")
+    ax_high.set_xlabel("Time (days)")
+    ax_low.set_ylabel("Infectious proportion")
+    
+    # Panel labels
+    ax_low.text(0.01, 0.98, "A", transform=ax_low.transAxes, ha="left", va="top", fontweight="bold", fontsize=14)
+    ax_high.text(0.01, 0.98, "B", transform=ax_high.transAxes, ha="left", va="top", fontweight="bold", fontsize=14)
+
+    for ax in (ax_low, ax_high):
+        ax.grid(True, alpha=0.25)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
 
     phi_handles = [
         Line2D([0], [0], color=cmap(idx / max(n_phi - 1, 1)), lw=2.5, label=f"phi={phi_t:.2f}")
         for idx, (phi_t, _, _) in enumerate(results)
     ]
-    leg_phi = ax_ts.legend(handles=phi_handles, title="Virulence", loc="center right", frameon=False)
-    ax_ts.add_artist(leg_phi)
-    ax_ts.legend(
-        handles=[
-            Line2D([0], [0], color="black", lw=2.5, ls="-", label="High strain"),
-            Line2D([0], [0], color="black", lw=2.5, ls="--", label="Low strain"),
-        ],
-        title="Strain",
-        loc="upper right",
-        frameon=False,
-    )
+    ax_high.legend(handles=phi_handles, title="Virulence", loc="center right", frameon=False)
 
     ax_peak.plot(
         summary["phi_transmission"],
@@ -172,7 +178,7 @@ def plot_results(results: List[Tuple[float, np.ndarray, Dict[str, np.ndarray]]],
         marker="s",
         label="Low strain peak",
     )
-    ax_peak.set_title("SEIRS v9: Peak infection vs virulence (no drug)")
+    ax_peak.set_title("Peak infection vs virulence (no drug)")
     ax_peak.set_xlabel("phi_transmission")
     ax_peak.set_ylabel("Peak infectious proportion")
     ax_peak.set_xticks(summary["phi_transmission"])
@@ -180,6 +186,9 @@ def plot_results(results: List[Tuple[float, np.ndarray, Dict[str, np.ndarray]]],
     ax_peak.spines["top"].set_visible(False)
     ax_peak.spines["right"].set_visible(False)
     ax_peak.legend(frameon=False, loc="best")
+    
+    # Panel label C
+    ax_peak.text(0.01, 0.98, "C", transform=ax_peak.transAxes, ha="left", va="top", fontweight="bold", fontsize=14)
 
     fig.savefig(out_base + ".png", dpi=700)
     fig.savefig(out_base + ".svg")
@@ -198,7 +207,7 @@ def main(argv: List[str] | None = None) -> int:
     rows: List[Dict[str, float]] = []
 
     print("=" * 72)
-    print("SEIRS v9: No-drug virulence sweep")
+    print("No-drug virulence sweep")
     print("=" * 72)
     print(f"phi_transmission values: {[f'{phi:.2f}' for phi in phi_vals]}")
     print("No-drug settings: restoration_efficiency=0.0, m_r=1.0, theta=0.0")
