@@ -3,9 +3,9 @@ Dynamics comparison for SEIRS v9 (two-strain) under four intervention setups.
 
 Scenarios:
 1) No drug
-2) Baseline drug effect
-3) No contact restoration (restoration=0) with baseline m_r
-4) No transmission reduction (m_r=1) with baseline restoration
+2) Drug A: transmission reduction only
+3) Drug B: contact restoration only
+4) Drug C: combined transmission reduction + contact restoration
 
 The script prints core metrics and saves a single publication-style figure
 combining both strains with solid lines for high strain and dashed for low strain.
@@ -116,18 +116,18 @@ def run_scenario(name, params_tuple):
 scenarios = {
     "No drug": pack_params(restoration_efficiency=0.0, m_r_drug=1.0, theta=0.0),
     "Drug A": pack_params(
-        restoration_efficiency=restoration_baseline,
-        m_r_drug=m_r_baseline,
-        theta=theta_baseline,
-    ),
-    "Drug B": pack_params(
         restoration_efficiency=0.0,
         m_r_drug=m_r_baseline,
         theta=theta_baseline,
     ),
-    "Drug C": pack_params(
+    "Drug B": pack_params(
         restoration_efficiency=restoration_baseline,
         m_r_drug=1.0,
+        theta=theta_baseline,
+    ),
+    "Drug C": pack_params(
+        restoration_efficiency=restoration_baseline,
+        m_r_drug=m_r_baseline,
         theta=theta_baseline,
     ),
 }
