@@ -85,6 +85,66 @@ def pack_params(restoration_efficiency, m_r_drug, theta):
     )
 
 
+def compute_reproduction_numbers(params_tuple):
+    """Return strain-specific and dominant R0/Re for the v9 parameterization.
+
+    R0: no-drug baseline (untreated transmission only).
+    Re: effective reproduction number after drug effects are included.
+    """
+    (
+        c_low_i,
+        r_low_i,
+        phi_t_i,
+        restoration_efficiency_i,
+        m_r_drug_i,
+        kappa_base_i,
+        kappa_scale_i,
+        sigma_i,
+        _tau_i,
+        theta_i,
+    ) = params_tuple
+
+    alpha = 0.5
+    vir_excess_pos = max(0.0, phi_t_i - 1.0)
+    c_high_untreated = c_low_i * np.exp(-alpha * vir_excess_pos)
+    c_high_treated = c_high_untreated + restoration_efficiency_i * (c_low_i - c_high_untreated)
+
+    beta_h_u = c_high_untreated * r_low_i * phi_t_i
+    beta_h_t = c_high_treated * (r_low_i * m_r_drug_i) * phi_t_i
+    beta_l_u = c_low_i * r_low_i
+    beta_l_t = c_low_i * (r_low_i * m_r_drug_i)
+
+    kappa_high = kappa_base_i * (1 + kappa_scale_i * vir_excess_pos)
+    kappa_low = kappa_base_i
+    if theta_i > 0:
+        kappa_high = min(kappa_high, 1.0 / theta_i)
+        kappa_low = min(kappa_low, 1.0 / theta_i)
+
+    theta_high = kappa_high * theta_i
+    theta_low = kappa_low * theta_i
+
+    beta_ratio = beta_h_u / max(beta_l_u, 1e-10)
+    sigma_h = max(sigma_i * beta_ratio, 1e-8)
+    sigma_l = max(sigma_i, 1e-8)
+
+    r0_high = beta_h_u / sigma_h
+    r0_low = beta_l_u / sigma_l
+    r0_dominant = max(r0_high, r0_low)
+
+    re_high = ((1.0 - theta_high) * beta_h_u + theta_high * beta_h_t) / sigma_h
+    re_low = ((1.0 - theta_low) * beta_l_u + theta_low * beta_l_t) / sigma_l
+    re_dominant = max(re_high, re_low)
+
+    return {
+        "R0_high": float(r0_high),
+        "R0_low": float(r0_low),
+        "R0_dominant": float(r0_dominant),
+        "Re_high": float(re_high),
+        "Re_low": float(re_low),
+        "Re_dominant": float(re_dominant),
+    }
+
+
 def run_scenario(name, params_tuple):
     """Run ODE and return trajectories and summary metrics."""
     sol = odeint(SEIRS_model_v9, init, T, args=(params_tuple,))
@@ -95,12 +155,14 @@ def run_scenario(name, params_tuple):
     inf_total = inf_high + inf_low
 
     peak_idx = int(np.argmax(inf_total))
+    repro = compute_reproduction_numbers(params_tuple)
     metrics = {
         "scenario": name,
         "peak_infectious_total": float(np.max(inf_total)),
         "time_of_peak": float(T[peak_idx]),
         "final_susceptible": float(S[-1]),
         "attack_rate": float(1.0 - S[-1]),
+        **repro,
     }
 
     return {
@@ -143,8 +205,16 @@ for name, out in results.items():
     m = out["metrics"]
     print(f"\n{name}")
     print(f"  Peak infectious (total): {m['peak_infectious_total']:.6f} at day {m['time_of_peak']:.2f}")
-    print(f"  Final susceptible: {m['final_susceptible']:.6f}")
+    print(f"  Epidemic size (final susceptible): {m['final_susceptible']:.6f}")
     print(f"  Attack rate: {m['attack_rate']:.6f}")
+    print(
+        "  R0 (dominant / high / low): "
+        f"{m['R0_dominant']:.4f} / {m['R0_high']:.4f} / {m['R0_low']:.4f}"
+    )
+    print(
+        "  Reff (dominant / high / low, with drug): "
+        f"{m['Re_dominant']:.4f} / {m['Re_high']:.4f} / {m['Re_low']:.4f}"
+    )
 
 
 # %% Plot dynamics (two panels, shared y-axis, publication-style)
