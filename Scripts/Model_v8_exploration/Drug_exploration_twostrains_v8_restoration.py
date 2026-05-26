@@ -7,8 +7,8 @@ Scenarios:
 3) Drug B: contact restoration only
 4) Drug C: combined transmission reduction + contact restoration
 
-The script prints core metrics and saves a single publication-style figure
-combining both strains with solid lines for high strain and dashed for low strain.
+The script prints core metrics and saves a publication-style figure with one
+panel per scenario, comparing high- and low-virulence trajectories within each.
 """
 
 # %% Imports
@@ -218,7 +218,7 @@ for name, out in results.items():
     )
 
 
-# %% Plot dynamics (two panels, shared y-axis, publication-style)
+# %% Plot dynamics (four panels, one per scenario)
 from matplotlib.lines import Line2D
 
 # Scientific style settings (portable, no external font dependency)
@@ -247,44 +247,45 @@ scenario_styles = {
     "Drug C": {"color": "#e7298a"},
 }
 
-fig, (ax_low, ax_high) = plt.subplots(
-    1, 2, figsize=(12.2, 5.6), sharey=True, constrained_layout=True
-)
+fig, axes = plt.subplots(2, 2, figsize=(13.0, 9.4), sharex=True, sharey=True, constrained_layout=True)
 
-# Left: low virulence strain
-# Right: high virulence strain
-for name, out in results.items():
+panel_labels = ["A", "B", "C", "D"]
+for ax, panel_label, (name, out) in zip(axes.flat, panel_labels, results.items()):
     color = scenario_styles[name]["color"]
-    ax_low.plot(T, out["inf_low"], color=color, ls="-")
-    ax_high.plot(T, out["inf_high"], color=color, ls="-")
-
-ax_low.set_title("Low virulence strain")
-ax_high.set_title("High virulence strain")
-ax_low.set_xlabel("Time (days)")
-ax_high.set_xlabel("Time (days)")
-ax_low.set_ylabel("Infectious proportion")
-
-# Panel labels for manuscript-style multi-panel figure
-ax_low.text(0.01, 0.98, "A", transform=ax_low.transAxes, ha="left", va="top", fontweight="bold", fontsize=14)
-ax_high.text(0.01, 0.98, "B", transform=ax_high.transAxes, ha="left", va="top", fontweight="bold", fontsize=14)
-
-for ax in (ax_low, ax_high):
+    ax.plot(T, out["inf_high"], color=color, ls="-", label="High virulence")
+    ax.plot(T, out["inf_low"], color=color, ls="--", label="Low virulence")
+    ax.set_title(name)
+    ax.text(
+        0.01,
+        0.98,
+        panel_label,
+        transform=ax.transAxes,
+        ha="left",
+        va="top",
+        fontweight="bold",
+        fontsize=14,
+    )
     ax.grid(True, alpha=0.25)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
 
-# Scenario-color legend on right panel
+for ax in axes[1, :]:
+    ax.set_xlabel("Time (days)")
+
+for ax in axes[:, 0]:
+    ax.set_ylabel("Infectious proportion")
+
 scenario_handles = [
     Line2D([0], [0], color=scenario_styles[name]["color"], lw=2.5, label=name)
     for name in scenarios
 ]
-ax_high.legend(
-    handles=scenario_handles,
-    title="Scenario",
-    loc="center right",
-    frameon=False,
-    ncol=1,
-)
+strain_handles = [
+    Line2D([0], [0], color="black", lw=2.5, ls="-", label="High virulence"),
+    Line2D([0], [0], color="black", lw=2.5, ls="--", label="Low virulence"),
+]
+
+fig.legend(handles=scenario_handles, title="Scenario color", loc="outside right upper", frameon=False)
+fig.legend(handles=strain_handles, title="Strain", loc="outside right lower", frameon=False)
 
 out_base = os.path.join(
     os.path.dirname(__file__),
