@@ -284,8 +284,13 @@ strain_handles = [
     Line2D([0], [0], color="black", lw=2.5, ls="--", label="Low virulence"),
 ]
 
-fig.legend(handles=scenario_handles, title="Scenario color", loc="outside right upper", frameon=False)
-fig.legend(handles=strain_handles, title="Strain", loc="outside right lower", frameon=False)
+combined_handles = scenario_handles + strain_handles
+fig.legend(
+    handles=combined_handles,
+    title="Scenario and strain",
+    loc="outside right center",
+    frameon=False,
+)
 
 out_base = os.path.join(
     os.path.dirname(__file__),

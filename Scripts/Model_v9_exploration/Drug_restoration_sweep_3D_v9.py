@@ -46,6 +46,7 @@ from Models.SEIRS_Models import SEIRS_model_v9
 from Models import params as P
 
 COLS = ["S", "Eh", "Indh", "Idh", "Rh", "El", "Indl", "Idl", "Rl"]
+REL_DIFF_EPS = 1e-12
 
 
 def initial_conditions(normalize: bool = True) -> np.ndarray:
@@ -122,8 +123,16 @@ def metrics(t: np.ndarray, sim: Dict[str, np.ndarray]) -> Dict[str, float]:
     }
 
 
+def fold_change(current: float, baseline: float) -> float:
+    """Return fold change relative to baseline, or NaN if baseline is zero."""
+    baseline = float(baseline)
+    if not np.isfinite(baseline) or abs(baseline) <= REL_DIFF_EPS:
+        return float(np.nan)
+    return float(float(current) / baseline)
+
+
 def peak_infection_heatmaps(df: pd.DataFrame, out_path: str, max_phi_panels: int = 8) -> None:
-    """2D heatmaps faceted by phi, showing delta from baseline.
+    """2D heatmaps faceted by phi, showing fold change from baseline.
 
     Layout:
     - Left column: Low-strain heatmaps (one per phi value)
@@ -146,7 +155,7 @@ def peak_infection_heatmaps(df: pd.DataFrame, out_path: str, max_phi_panels: int
 
     # Build one global color scale across both strains and all phi values.
     global_vals = pd.concat(
-        [df["delta_peak_I_low"], df["delta_peak_I_high"]],
+        [df["fold_peak_I_low"], df["fold_peak_I_high"]],
         axis=0,
         ignore_index=True,
     ).to_numpy(dtype=float)
@@ -161,15 +170,16 @@ def peak_infection_heatmaps(df: pd.DataFrame, out_path: str, max_phi_panels: int
         global_max = float(global_finite.max())
         if np.isclose(global_min, global_max):
             global_norm = Normalize(vmin=global_min - 1e-12, vmax=global_max + 1e-12)
-        elif global_min < 0.0 < global_max:
-            global_norm = TwoSlopeNorm(vmin=global_min, vcenter=0.0, vmax=global_max)
+        elif global_min < 1.0 < global_max:
+            # Fold-change neutrality is 1.0, so center diverging colors at 1.0.
+            global_norm = TwoSlopeNorm(vmin=global_min, vcenter=1.0, vmax=global_max)
         else:
             global_norm = Normalize(vmin=global_min, vmax=global_max)
 
     for phi_idx, phi_t in enumerate(phi_vals):
         df_phi = df[df["phi_transmission"] == phi_t]
-        pivot_high = df_phi.pivot_table(index="mr", columns="restoration_efficiency", values="delta_peak_I_high", sort=True)
-        pivot_low = df_phi.pivot_table(index="mr", columns="restoration_efficiency", values="delta_peak_I_low", sort=True)
+        pivot_high = df_phi.pivot_table(index="mr", columns="restoration_efficiency", values="fold_peak_I_high", sort=True)
+        pivot_low = df_phi.pivot_table(index="mr", columns="restoration_efficiency", values="fold_peak_I_low", sort=True)
 
         im_l = axes[phi_idx, 0].imshow(
             pivot_low.values,
@@ -199,7 +209,7 @@ def peak_infection_heatmaps(df: pd.DataFrame, out_path: str, max_phi_panels: int
     # Reserve a dedicated axis on the far right for the shared colorbar.
     cax = fig.add_axes([0.93, 0.12, 0.018, 0.76])
     cbar = fig.colorbar(im_h, cax=cax, orientation="vertical")
-    cbar.set_label("Delta Peak Infection (vs baseline)", fontsize=10)
+    cbar.set_label("Peak Infection Fold Change (x no-drug scenario)", fontsize=10)
 
     sci_fmt = FuncFormatter(lambda x, _: f"{x:.2e}")
 
@@ -207,10 +217,10 @@ def peak_infection_heatmaps(df: pd.DataFrame, out_path: str, max_phi_panels: int
         if np.isclose(vmin, vmax):
             span = max(abs(vmin), 1e-9)
             return np.array([vmin - 0.05 * span, vmin, vmin + 0.05 * span])
-        if vmin < 0.0 < vmax:
-            neg = np.array([vmin, 0.5 * vmin])
-            pos = np.array([0.5 * vmax, vmax])
-            ticks = np.concatenate([neg, np.array([0.0]), pos])
+        if vmin < 1.0 < vmax:
+            lower_mid = 0.5 * (vmin + 1.0)
+            upper_mid = 0.5 * (1.0 + vmax)
+            ticks = np.array([vmin, lower_mid, 1.0, upper_mid, vmax])
             return np.sort(np.unique(ticks))
         return np.linspace(vmin, vmax, 5)
 
@@ -317,7 +327,7 @@ def main(argv: List[str] | None = None) -> int:
     print(f"Days: {args.days}, Steps: {args.steps}")
     print("=" * 70)
 
-    # Baseline simulation per phi for consistent within-phi deltas
+    # Baseline simulation per phi for consistent within-phi relative changes
     print("\nRunning baseline simulations by phi (ρ=0.0, m_r=1.0)...")
     baselines_by_phi: Dict[float, Dict[str, float]] = {}
     for phi_t in phi_vals:
@@ -352,8 +362,8 @@ def main(argv: List[str] | None = None) -> int:
                     "mr": float(mr),
                     "peak_I_high": m["peak_I_high"],
                     "peak_I_low": m["peak_I_low"],
-                    "delta_peak_I_high": m["peak_I_high"] - baseline["peak_I_high"],
-                    "delta_peak_I_low": m["peak_I_low"] - baseline["peak_I_low"],
+                    "fold_peak_I_high": fold_change(m["peak_I_high"], baseline["peak_I_high"]),
+                    "fold_peak_I_low": fold_change(m["peak_I_low"], baseline["peak_I_low"]),
                 })
                 print("✓")
 
