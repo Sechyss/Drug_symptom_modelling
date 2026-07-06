@@ -174,7 +174,7 @@ def create_tornado_plot(rows, metric_name, output_suffix=""):
         title_suffix = " (Total infections)"
 
     ax.set_xlabel(f"{metric_label} (vs baseline)")
-    ax.set_title(f"Tornado sensitivity (SEIRS_model_v9){title_suffix}")
+    ax.set_title(f"Tornado sensitivity {title_suffix}")
     ax.legend(loc="lower right", frameon=True)
 
     xmax = float(np.max(np.abs(np.concatenate([neg, pos, np.array([0.0])]))))

@@ -196,7 +196,7 @@ def create_tornado_plot(rows, output_suffix=""):
     ax.invert_yaxis()
 
     ax.set_xlabel(r"Relative peak gap: $(I_{high}^{peak} - I_{low}^{peak}) / I_{low}^{peak}$")
-    ax.set_title("Tornado sensitivity (SEIRS_model_v9): strain peak relative gap")
+    ax.set_title("Tornado sensitivity: strain peak relative gap")
     ax.legend(loc="lower right", frameon=True)
 
     xmax = float(np.max(np.abs(np.concatenate([neg, pos, np.array([0.0])]))))

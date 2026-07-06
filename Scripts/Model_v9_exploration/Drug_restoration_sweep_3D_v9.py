@@ -153,65 +153,21 @@ def peak_infection_heatmaps(df: pd.DataFrame, out_path: str, max_phi_panels: int
     mr_min = df["mr"].min()
     mr_max = df["mr"].max()
 
-    # Build one global color scale across both strains and all phi values.
-    global_vals = pd.concat(
-        [df["fold_peak_I_low"], df["fold_peak_I_high"]],
-        axis=0,
-        ignore_index=True,
-    ).to_numpy(dtype=float)
-    global_finite = global_vals[np.isfinite(global_vals)]
+    def make_local_norm(values: np.ndarray):
+        finite = values[np.isfinite(values)]
+        if finite.size == 0:
+            return Normalize(vmin=0.0, vmax=1.0), 0.0, 1.0
 
-    if global_finite.size == 0:
-        global_norm = None
-        global_min = 0.0
-        global_max = 0.0
-    else:
-        global_min = float(global_finite.min())
-        global_max = float(global_finite.max())
-        if np.isclose(global_min, global_max):
-            global_norm = Normalize(vmin=global_min - 1e-12, vmax=global_max + 1e-12)
-        elif global_min < 1.0 < global_max:
+        vmin = float(finite.min())
+        vmax = float(finite.max())
+        if np.isclose(vmin, vmax):
+            norm = Normalize(vmin=vmin - 1e-12, vmax=vmax + 1e-12)
+        elif vmin < 1.0 < vmax:
             # Fold-change neutrality is 1.0, so center diverging colors at 1.0.
-            global_norm = TwoSlopeNorm(vmin=global_min, vcenter=1.0, vmax=global_max)
+            norm = TwoSlopeNorm(vmin=vmin, vcenter=1.0, vmax=vmax)
         else:
-            global_norm = Normalize(vmin=global_min, vmax=global_max)
-
-    for phi_idx, phi_t in enumerate(phi_vals):
-        df_phi = df[df["phi_transmission"] == phi_t]
-        pivot_high = df_phi.pivot_table(index="mr", columns="restoration_efficiency", values="fold_peak_I_high", sort=True)
-        pivot_low = df_phi.pivot_table(index="mr", columns="restoration_efficiency", values="fold_peak_I_low", sort=True)
-
-        im_l = axes[phi_idx, 0].imshow(
-            pivot_low.values,
-            origin="lower",
-            aspect="auto",
-            cmap="coolwarm",
-            norm=global_norm,
-            extent=[restoration_min, restoration_max, mr_min, mr_max],
-        )
-        axes[phi_idx, 0].set_title(f"Low-strain (phi={phi_t:.2f})", fontsize=11, fontweight="bold", pad=15)
-        axes[phi_idx, 0].set_xlabel("Restoration efficiency rho", fontsize=10)
-        axes[phi_idx, 0].set_ylabel("Transmission multiplier m_r", fontsize=10)
-
-        im_h = axes[phi_idx, 1].imshow(
-            pivot_high.values,
-            origin="lower",
-            aspect="auto",
-            cmap="coolwarm",
-            norm=global_norm,
-            extent=[restoration_min, restoration_max, mr_min, mr_max],
-        )
-        axes[phi_idx, 1].set_title(f"High-strain (phi={phi_t:.2f})", fontsize=11, fontweight="bold", pad=15)
-        axes[phi_idx, 1].set_xlabel("Restoration efficiency rho", fontsize=10)
-        axes[phi_idx, 1].set_ylabel("Transmission multiplier m_r", fontsize=10)
-
-    # Single shared colorbar for all panels.
-    # Reserve a dedicated axis on the far right for the shared colorbar.
-    cax = fig.add_axes([0.93, 0.12, 0.018, 0.76])
-    cbar = fig.colorbar(im_h, cax=cax, orientation="vertical")
-    cbar.set_label("Peak Infection Fold Change (x no-drug scenario)", fontsize=10)
-
-    sci_fmt = FuncFormatter(lambda x, _: f"{x:.2e}")
+            norm = Normalize(vmin=vmin, vmax=vmax)
+        return norm, vmin, vmax
 
     def build_ticks(vmin: float, vmax: float) -> np.ndarray:
         if np.isclose(vmin, vmax):
@@ -224,12 +180,50 @@ def peak_infection_heatmaps(df: pd.DataFrame, out_path: str, max_phi_panels: int
             return np.sort(np.unique(ticks))
         return np.linspace(vmin, vmax, 5)
 
-    if global_finite.size > 0:
-        cbar.set_ticks(build_ticks(global_min, global_max))
-        cbar.ax.xaxis.set_major_formatter(sci_fmt)
-    cbar.ax.tick_params(labelsize=8, length=3, width=0.8)
+    sci_fmt = FuncFormatter(lambda x, _: f"{x:.2f}")
 
-    fig.subplots_adjust(left=0.08, right=0.89, bottom=0.1, top=0.94, hspace=0.4, wspace=0.26)
+    for phi_idx, phi_t in enumerate(phi_vals):
+        df_phi = df[df["phi_transmission"] == phi_t]
+        pivot_high = df_phi.pivot_table(index="mr", columns="restoration_efficiency", values="fold_peak_I_high", sort=True)
+        pivot_low = df_phi.pivot_table(index="mr", columns="restoration_efficiency", values="fold_peak_I_low", sort=True)
+
+        low_vals = pivot_low.to_numpy(dtype=float)
+        low_norm, low_min, low_max = make_local_norm(low_vals)
+        im_l = axes[phi_idx, 0].imshow(
+            pivot_low.values,
+            origin="lower",
+            aspect="auto",
+            cmap="coolwarm",
+            norm=low_norm,
+            extent=[restoration_min, restoration_max, mr_min, mr_max],
+        )
+        axes[phi_idx, 0].set_title(f"Low-strain (phi={phi_t:.2f})", fontsize=11, fontweight="bold", pad=15)
+        axes[phi_idx, 0].set_xlabel("Restoration efficiency rho", fontsize=10)
+        axes[phi_idx, 0].set_ylabel("Transmission multiplier m_r", fontsize=10)
+        cbar_l = fig.colorbar(im_l, ax=axes[phi_idx, 0], fraction=0.046, pad=0.03)
+        cbar_l.set_ticks(build_ticks(low_min, low_max))
+        cbar_l.ax.yaxis.set_major_formatter(sci_fmt)
+        cbar_l.ax.tick_params(labelsize=8, length=3, width=0.8)
+
+        high_vals = pivot_high.to_numpy(dtype=float)
+        high_norm, high_min, high_max = make_local_norm(high_vals)
+        im_h = axes[phi_idx, 1].imshow(
+            pivot_high.values,
+            origin="lower",
+            aspect="auto",
+            cmap="coolwarm",
+            norm=high_norm,
+            extent=[restoration_min, restoration_max, mr_min, mr_max],
+        )
+        axes[phi_idx, 1].set_title(f"High-strain (phi={phi_t:.2f})", fontsize=11, fontweight="bold", pad=15)
+        axes[phi_idx, 1].set_xlabel("Restoration efficiency rho", fontsize=10)
+        axes[phi_idx, 1].set_ylabel("Transmission multiplier m_r", fontsize=10)
+        cbar_h = fig.colorbar(im_h, ax=axes[phi_idx, 1], fraction=0.046, pad=0.03)
+        cbar_h.set_ticks(build_ticks(high_min, high_max))
+        cbar_h.ax.yaxis.set_major_formatter(sci_fmt)
+        cbar_h.ax.tick_params(labelsize=8, length=3, width=0.8)
+
+    fig.subplots_adjust(left=0.08, right=0.96, bottom=0.1, top=0.94, hspace=0.4, wspace=0.26)
     fig.savefig(out_path, dpi=200, bbox_inches="tight", pad_inches=0.12)
     print(f"✓ Saved heatmap: {out_path}")
     plt.close(fig)
